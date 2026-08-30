@@ -1,0 +1,88 @@
+// RepoPulse schema — GitHub engineering health dashboard.
+// PostgreSQL via env("DATABASE_URL").
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  github_id   Int      @unique
+  username    String
+  email       String?
+  // GitHub access token, encrypted at rest (AES-256-GCM). Unencrypted:
+  // a hex or base64 blob of IV:authTag:ciphertext produced by src/crypto/token.ts.
+  access_token String
+  created_at  DateTime @default(now())
+
+  connectedRepos Repo[]
+
+  @@map("users")
+}
+
+model Repo {
+  id                 String   @id @default(cuid())
+  github_repo_id     Int      @unique
+  owner              String
+  name               String
+  connected_by_user_id String
+
+  connected_by_user User     @relation(fields: [connected_by_user_id], references: [id], onDelete: Cascade)
+  pullRequests      PullRequest[]
+
+  // A repo is unique per (owner, name) — avoid duplicate connections.
+  @@unique([owner, name])
+  // Fast lookups of all repos a user connected.
+  @@index([connected_by_user_id])
+
+  @@map("repos")
+}
+
+model PullRequest {
+  id             String   @id @default(cuid())
+  repo_id        String
+  github_pr_id   Int
+  author         String
+  title          String
+  // open | closed | merged
+  state          String
+  opened_at      DateTime
+  first_review_at DateTime?
+  merged_at      DateTime?
+  closed_at      DateTime?
+
+  repo       Repo       @relation(fields: [repo_id], references: [id], onDelete: Cascade)
+  reviewers  Reviewer[]
+
+  // A GitHub PR is unique within a repo.
+  @@unique([repo_id, github_pr_id])
+  // Date-range queries are per repo, so lead with repo_id then the date column.
+  @@index([repo_id, opened_at])
+  @@index([repo_id, first_review_at])
+  @@index([repo_id, merged_at])
+  @@index([repo_id, closed_at])
+  // Cross-repo time-to-merge queries (dashboard-wide): merged_at alone.
+  @@index([merged_at])
+
+  @@map("pull_requests")
+}
+
+model Reviewer {
+  id               String   @id @default(cuid())
+  pull_request_id  String
+  username         String
+  reviewed_at      DateTime
+
+  pull_request PullRequest @relation(fields: [pull_request_id], references: [id], onDelete: Cascade)
+
+  @@index([pull_request_id])
+  // Response-time analytics: "how long until reviewer X reviews".
+  @@index([username, reviewed_at])
+
+  @@map("reviewers")
+}

@@ -1,0 +1,38 @@
+# Render Blueprint for RepoPulse.
+# Two ways to use it:
+#   A) Dashboard → New → Blueprint → select this repo  (Render reads render.yaml)
+#   B) Dashboard → New → Web Service → connect repo → Environment: Docker
+#      (then set the env vars listed below manually)
+#
+# Note: Postgres is hosted on Neon (free tier), so DATABASE_URL below is
+# `sync: false` — set it in the dashboard to your Neon connection string.
+#
+# Deployment flow: Render builds the Dockerfile, then the container runs
+# `prisma migrate deploy` before booting the Express app, which also serves
+# the built frontend (single origin → one public URL).
+
+services:
+  - type: web
+    name: repopulse
+    runtime: docker
+    plan: free
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        sync: false            # set in dashboard: Neon connection string
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: GITHUB_REDIRECT_URI
+        sync: false            # https://<your-service>.onrender.com/auth/github/callback
+      # ENCRYPTION_KEY is optional — derived from SESSION_SECRET when unset.

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build output
+backend/dist/
+frontend/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Render
+render.yaml      # committed intentionally (Blueprint). Render stores secrets separately.
+
+# Runtime
+*.pid

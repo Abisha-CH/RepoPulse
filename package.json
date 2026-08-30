@@ -1,0 +1,19 @@
+{
+  "name": "repopulse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "GitHub engineering health dashboard",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "build": "npm run build -w frontend && npm run build -w backend",
+    "dev": "npm run dev -w backend",
+    "typecheck": "npm run typecheck -w backend && npm run typecheck -w frontend",
+    "lint": "npm run lint -w backend && npm run lint -w frontend"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
