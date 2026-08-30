@@ -5,13 +5,7 @@
 
 ---
 
-<!-- SCREENSHOT / DEMO PLACEHOLDER -->
-<!--
-  Capture a quick screenshot or GIF of the RepoPulse dashboard with synced repository metrics:
-  ![RepoPulse Dashboard Preview](docs/screenshots/dashboard-preview.png)
--->
-
----
+![RepoPulse Dashboard — Engineering Health Metrics](screenshots/dashboard-metrics.png)
 
 ## 🌟 Why RepoPulse?
 
@@ -35,7 +29,12 @@ Software engineering teams often struggle with invisible bottlenecks in their de
   - 🚀 **Avg Time to Merge:** Duration from PR opening to merge timestamp.
   - ⚠️ **Stale Open PRs:** Real-time tracking of pull requests open for more than 7 days without merging.
   - 👥 **Bus Factor / PR Author Concentration:** Quantifies knowledge distribution (% of merged PRs authored by top contributors) categorized as High, Moderate, or Low risk.
+
+    ![Contributor Breakdown](screenshots/contributor-breakdown.png)
+
 - 📋 **Pull Request Activity Table:** Tabular breakdown of recent PRs with statuses, review timings, merge times, and contributor identities.
+
+    ![Pull Request Table](screenshots/pr-table.png)
 
 ---
 
@@ -64,6 +63,8 @@ Browser ── /auth/github/login ──▶ GitHub ──?code=...──▶ /aut
                                                      Set-Cookie repopulse_session=JWT
                                                      redirect ──▶ / (Dashboard SPA)
 ```
+
+![GitHub OAuth Login](screenshots/login.png)
 
 This single-origin model eliminates cross-origin cookie issues and makes authentication work seamlessly across `localhost`, ngrok tunnels, and production URLs.
 
