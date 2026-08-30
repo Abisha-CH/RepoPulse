@@ -29,7 +29,7 @@ Software engineering teams often struggle with invisible bottlenecks in their de
 
 - 🔐 **GitHub OAuth 2.0 & Token Security:** Secure authorization code flow with session tokens and AES-256-GCM encryption for stored GitHub access tokens at rest.
 - 🔄 **On-Demand PR & Review Sync:** Multi-page pagination pulling pull requests and reviewer histories directly from the GitHub REST API.
-- ⏱️ **Rate-Limit Resilience:** Batch-controlled review fetching (5 concurrent workers) and structured 429 rate limit backoff handling with live reset countdowns.
+- ⏱️ **Rate-Limit Resilience:** Batch-controlled review fetching (10 concurrent workers) and structured 429 rate limit backoff handling with live reset countdowns.
 - 📊 **Core Engineering Health Metrics:**
   - ⏱️ **Avg Time to First Review:** Duration from PR opening to the earliest non-author review.
   - 🚀 **Avg Time to Merge:** Duration from PR opening to merge timestamp.
@@ -93,7 +93,7 @@ Set the required environment variables:
 
 | Variable | Required | Description | Example / Default |
 | :--- | :---: | :--- | :--- |
-| `DATABASE_URL` | ✅ | PostgreSQL connection string | `postgresql://user:pass@ep-xyz.aws.neon.tech/repopulse?sslmode=require` |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string (**direct endpoint** — do not use Neon's `-pooler` suffix or PgBouncer; Prisma interactive transactions are unsafe over connection poolers) | `postgresql://user:pass@ep-xyz.us-east-2.aws.neon.tech/repopulse?sslmode=require` |
 | `GITHUB_CLIENT_ID` | ✅ | GitHub OAuth App Client ID | `Ov23li...` |
 | `GITHUB_CLIENT_SECRET` | ✅ | GitHub OAuth App Client Secret | `4a8f...` |
 | `SESSION_SECRET` | ✅ | Random key for signing session JWTs | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
@@ -160,6 +160,12 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
    - Time to first review evaluates the earliest review timestamp submitted by a peer (excluding self-reviews by the PR author). If a PR was reviewed via issue comments rather than formal GitHub Pull Request Review submissions, it is recorded once a review object exists.
 4. **Free Tier Hosting Sleep Cycle:**
    - On free platforms (e.g., Render), instances spin down after 15 minutes of inactivity and take ~30 seconds to wake up on the first request.
+5. **Sync Latency Characteristics (Remote PostgreSQL):**
+   - For large repos (~200 PRs), the sync completes in roughly **80–85 seconds wall-time** with this profile: GitHub fetch ≈ 5s, review fetch (10 concurrent) ≈ 12–14s, DB write ≈ 65–70s. The write phase is sequential (one upsert + reviewer replace per PR) because Prisma's interactive `$transaction(callback)` has a hard 5s timeout that is incompatible with 200 sequential remote round-trips. The current approach trades write latency for correctness, reliability, and pooler safety.
+6. **Neon Pooler / Prisma `$transaction` Constraint:**
+   - `DATABASE_URL` **must use Neon's direct (non-pooler) endpoint** (no `-pooler` in the hostname). Prisma's interactive `$transaction(callback)` routes each statement independently; over PgBouncer-style connection poolers, statements can land on different connections, producing `P2028: Transaction not found` errors. If the app ever requires pooling (e.g., serverless deployment), the sync write loop must stay off interactive `$transaction` and use per-PR array-form `$transaction([...])` exclusively.
+7. **Future Optimization — Bulk Batched DB Writes:**
+   - The per-PR sequential upsert + array-form reviewer replace is correct but is the dominant cost in sync wall-time. A future optimization could batch upserts via `createMany({ skipDuplicates: true })` and chunk reviewer writes in array-form transactions, substantially reducing the number of remote-DB round-trips while remaining pooler-safe.
 
 ---
 

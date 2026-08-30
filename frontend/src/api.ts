@@ -164,14 +164,35 @@ export async function syncRepo(repoId: string): Promise<{ success: boolean; coun
   const res = await fetch(`/repos/${encodeURIComponent(repoId)}/sync`, {
     method: 'POST',
   });
+
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string; rateLimitReset?: string };
-    if (res.status === 429 && data.rateLimitReset) {
-      const resetTime = new Date(data.rateLimitReset).toLocaleTimeString();
-      throw new Error(`GitHub API rate limit hit. Reset expected at ${resetTime}. ${data.error ?? ''}`);
+    let errorDetail = '';
+
+    try {
+      const data = (await res.json()) as { error?: string; rateLimitReset?: string };
+      if (res.status === 429 && data.rateLimitReset) {
+        const resetTime = new Date(data.rateLimitReset).toLocaleTimeString();
+        throw new Error(`GitHub API rate limit hit. Reset expected at ${resetTime}. ${data.error ?? ''}`);
+      }
+      errorDetail = data.error ?? '';
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('rate limit')) {
+        throw err;
+      }
+      // If response is HTML (e.g., ngrok tunnel or reverse proxy timeout 503/504)
+      if (res.status === 503) {
+        errorDetail =
+          'Sync request timed out (503 Service Unavailable). If testing through ngrok, the request exceeded the 60-second tunnel timeout. Try testing directly on http://localhost:5173 or re-syncing.';
+      } else if (res.status === 504) {
+        errorDetail = 'Gateway Timeout (504). The server took too long to complete the sync operation.';
+      } else {
+        errorDetail = `Server returned HTTP ${res.status}: ${res.statusText || 'Unknown Error'}`;
+      }
     }
-    throw new Error(data.error ?? `Failed to sync repository (${res.status})`);
+
+    throw new Error(errorDetail || `Failed to sync repository (${res.status})`);
   }
+
   return (await res.json()) as { success: boolean; count: number; message: string };
 }
 

@@ -198,13 +198,13 @@ export async function listUserGitHubRepos(token: string): Promise<GitHubRepoSumm
 }
 
 /**
- * Fetch all Pull Requests for a repository across pages.
+ * Fetch Pull Requests for a repository across pages (default 2 pages = up to 200 PRs for fast sync).
  */
 export async function fetchAllPullRequests(
   owner: string,
   name: string,
   token: string,
-  maxPages = 10
+  maxPages = 2
 ): Promise<GitHubPR[]> {
   const allPrs: GitHubPR[] = [];
   let page = 1;

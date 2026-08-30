@@ -164,14 +164,44 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
     return;
   }
 
+  const startTime = Date.now();
+  console.log(`[Sync] Starting sync for ${repo.owner}/${repo.name}...`);
+
   try {
     const token = decryptToken(user.access_token);
 
-    // 1. Fetch all PRs across pages
+    // 1. Fetch recent PRs across pages (up to 200 PRs)
     const prs = await fetchAllPullRequests(repo.owner, repo.name, token);
+    console.log(`[Sync] Fetched ${prs.length} PRs from GitHub in ${Date.now() - startTime}ms.`);
 
-    // 2. Fetch reviews concurrently with controlled batching (5 concurrent requests)
-    const prsWithReviews = await mapConcurrent(prs, 5, async (pr) => {
+    // 2. Fetch existing cached PRs from DB to skip redundant review API calls
+    const existingPrs = await prisma.pullRequest.findMany({
+      where: { repo_id: repo.id },
+      select: {
+        github_pr_id: true,
+        first_review_at: true,
+        state: true,
+      },
+    });
+    const existingMap = new Map(existingPrs.map((p) => [p.github_pr_id, p]));
+
+    // 3. Fetch reviews concurrently with controlled batching (10 concurrent requests)
+    const prsWithReviews = await mapConcurrent(prs, 10, async (pr) => {
+      const cached = existingMap.get(pr.number);
+      // If PR is closed/merged and already has its review timestamp cached, skip API roundtrip
+      if (
+        cached &&
+        (cached.state === 'closed' || cached.state === 'merged') &&
+        cached.first_review_at !== null
+      ) {
+        return {
+          pr,
+          reviews: [],
+          firstReviewAt: cached.first_review_at,
+          isCached: true,
+        };
+      }
+
       const reviews = await fetchPullRequestReviews(repo.owner, repo.name, pr.number, token);
       const prAuthor = pr.user?.login ?? '';
 
@@ -180,21 +210,30 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
         .filter((r) => r.submitted_at && r.user?.login && r.user.login !== prAuthor)
         .sort((a, b) => new Date(a.submitted_at!).getTime() - new Date(b.submitted_at!).getTime());
 
-      const firstReviewAt = validReviews.length > 0 && validReviews[0]?.submitted_at
-        ? new Date(validReviews[0].submitted_at)
-        : null;
+      const firstReviewAt =
+        validReviews.length > 0 && validReviews[0]?.submitted_at
+          ? new Date(validReviews[0].submitted_at)
+          : null;
 
       return {
         pr,
         reviews,
         firstReviewAt,
+        isCached: false,
       };
     });
 
-    // 3. Upsert PRs and Reviewers in the database
+    const reviewPhaseMs = Date.now() - startTime;
+    console.log(`[Sync] Review phase done in ${(reviewPhaseMs / 1000).toFixed(1)}s (${prsWithReviews.length} PRs, concurrency 10).`);
+
+    // 4. Upsert PRs + reviewers. Each PR's reviewer replace is a small pooler-safe
+    //    array-form transaction. No global interactive transaction: interactive
+    //    $transaction(callback) is both pooler-unsafe (P2028) and would exceed Prisma's
+    //    5s interactive timeout across ~200 PRs on the remote DB.
+    const writeStart = Date.now();
     let upsertedCount = 0;
 
-    for (const { pr, reviews, firstReviewAt } of prsWithReviews) {
+    for (const { pr, reviews, firstReviewAt, isCached } of prsWithReviews) {
       const prAuthor = pr.user?.login ?? 'ghost';
       const state = pr.merged_at ? 'merged' : pr.state;
       const openedAt = new Date(pr.created_at);
@@ -230,36 +269,47 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
         },
       });
 
-      // Synchronize reviewers for this PR
-      const uniqueReviewers = new Map<string, Date>();
-      for (const rev of reviews) {
-        if (rev.user?.login && rev.submitted_at) {
-          const dt = new Date(rev.submitted_at);
-          const existing = uniqueReviewers.get(rev.user.login);
-          if (!existing || dt < existing) {
-            uniqueReviewers.set(rev.user.login, dt);
+      // Cached closed/merged PRs skip reviewer re-sync entirely.
+      if (!isCached) {
+        const uniqueReviewers = new Map<string, Date>();
+        for (const rev of reviews) {
+          if (rev.user?.login && rev.submitted_at) {
+            const dt = new Date(rev.submitted_at);
+            const existing = uniqueReviewers.get(rev.user.login);
+            if (!existing || dt < existing) {
+              uniqueReviewers.set(rev.user.login, dt);
+            }
           }
         }
-      }
 
-      await prisma.reviewer.deleteMany({ where: { pull_request_id: savedPr.id } });
-      if (uniqueReviewers.size > 0) {
-        await prisma.reviewer.createMany({
-          data: Array.from(uniqueReviewers.entries()).map(([username, reviewed_at]) => ({
-            pull_request_id: savedPr.id,
-            username,
-            reviewed_at,
-          })),
-        });
+        if (uniqueReviewers.size > 0) {
+          // Reviewer replace is atomic per PR via the pooler-safe array-form
+          // $transaction (not interactive), so it can't hit the 5s global cap.
+          await prisma.$transaction([
+            prisma.reviewer.deleteMany({ where: { pull_request_id: savedPr.id } }),
+            prisma.reviewer.createMany({
+              data: Array.from(uniqueReviewers.entries()).map(([username, reviewed_at]) => ({
+                pull_request_id: savedPr.id,
+                username,
+                reviewed_at,
+              })),
+            }),
+          ]);
+        }
       }
-
       upsertedCount += 1;
     }
+
+    const writeMs = Date.now() - writeStart;
+    console.log(`[Sync] DB write phase done in ${(writeMs / 1000).toFixed(1)}s (${upsertedCount} PRs).`);
+
+    const durationSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[Sync] Finished sync of ${upsertedCount} PRs in ${durationSeconds}s.`);
 
     res.json({
       success: true,
       count: upsertedCount,
-      message: `Successfully synced ${upsertedCount} pull request(s) for ${repo.owner}/${repo.name}.`,
+      message: `Successfully synced ${upsertedCount} pull request(s) for ${repo.owner}/${repo.name} in ${durationSeconds}s.`,
     });
   } catch (err) {
     handleApiError(res, err);
