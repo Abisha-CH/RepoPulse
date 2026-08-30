@@ -36,6 +36,23 @@ Software engineering teams often struggle with invisible bottlenecks in their de
 
     ![Pull Request Table](screenshots/pr-table.png)
 
+- 📊 **CI Failure Rate by PR Size:** Reveals whether larger PRs fail CI checks more often than smaller ones. PRs are bucketed by total lines changed (additions + deletions) into three size categories:
+
+    | Bucket | Lines Changed |
+    | :--- | :--- |
+    | **Small** | < 100 |
+    | **Medium** | 100 – 499 |
+    | **Large** | ≥ 500 |
+
+    **Methodology:**
+    - CI status is fetched per PR via the **GitHub Checks API** (`GET /repos/{owner}/{repo}/commits/{sha}/check-runs?filter=latest`) on each PR's head commit.
+    - **Failure** = at least one completed check run concluded `failure`, `timed_out`, or `action_required`.
+    - **Passing** = at least one completed run, none of which failed or are still running.
+    - **Pending** = at least one run is still `queued` or `in_progress`.
+    - **Unknown (null)** = no check runs configured on the repository (legacy or non-Actions CI); these are excluded from the failure-rate denominator.
+
+    ![CI Failure Rate by PR Size](screenshots/ci.png)
+
 ---
 
 ## 🛠️ Tech Stack
