@@ -55,6 +55,11 @@ model PullRequest {
   first_review_at DateTime?
   merged_at      DateTime?
   closed_at      DateTime?
+  // Lines changed on the PR head (additions + deletions) for size bucketing.
+  additions      Int      @default(0)
+  deletions      Int      @default(0)
+  // CI/check status derived from the GitHub Checks API: 'success' | 'failure' | 'pending' | null (unknown / no checks).
+  ci_status      String?
 
   repo       Repo       @relation(fields: [repo_id], references: [id], onDelete: Cascade)
   reviewers  Reviewer[]

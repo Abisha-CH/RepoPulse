@@ -455,6 +455,69 @@ export default function App() {
               )}
             </div>
 
+            {/* CI Failure Rate by PR Size */}
+            <div className="card breakdown-card">
+              <div className="table-header-row">
+                <h3>CI Failure Rate by PR Size</h3>
+                {metricsData.metrics.ciByPrSize.hasCiData && (
+                  <div className="pr-counts-summary">
+                    <span className="tag tag-open">{metricsData.metrics.summary.totalPrs} PRs tracked</span>
+                  </div>
+                )}
+              </div>
+              <p className="methodology-note">
+                💡 <strong>Methodology Note:</strong> CI status comes from GitHub Checks on each PR's head
+                commit (failing = a completed run concluded failure / timed_out / action_required). Failure
+                rate = failing ÷ (failing + passing). PRs with no checks or still-pending runs are counted as
+                unknown.
+              </p>
+              {metricsData.metrics.ciByPrSize.hasCiData ? (
+                <div className="ci-bucket-table">
+                  <div className="ci-bucket-row ci-bucket-head">
+                    <span>PR Size</span>
+                    <span>PRs</span>
+                    <span>Passing</span>
+                    <span>Failing</span>
+                    <span>No CI</span>
+                    <span>Failure Rate</span>
+                  </div>
+                  {metricsData.metrics.ciByPrSize.buckets.map((b) => (
+                    <div key={b.key} className="ci-bucket-row">
+                      <span className="ci-bucket-name">
+                        {b.label}
+                        <span className="ci-bucket-range">{b.sizeRange}</span>
+                      </span>
+                      <span>{b.prCount}</span>
+                      <span className="ci-pass">{b.ciPassCount}</span>
+                      <span className="ci-fail">{b.ciFailureCount}</span>
+                      <span className="ci-unknown-text">{b.ciUnknownCount}</span>
+                      <span>
+                        {b.failureRate !== null ? (
+                          <span
+                            className={`risk-badge ${
+                              b.failureRate >= 30
+                                ? 'risk-high'
+                                : b.failureRate > 0
+                                  ? 'risk-moderate'
+                                  : 'risk-low'
+                            }`}
+                          >
+                            {b.failureRate}%
+                          </span>
+                        ) : (
+                          <span className="ci-unknown-text">n/a</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="empty-subtext">
+                  No CI data yet — run <strong>Sync Now</strong> to fetch check status per pull request.
+                </p>
+              )}
+            </div>
+
             {/* PR Activity Table */}
             <div className="card table-card">
               <div className="table-header-row">
@@ -475,6 +538,8 @@ export default function App() {
                         <th>Title</th>
                         <th>Author</th>
                         <th>State</th>
+                        <th>CI</th>
+                        <th>Lines</th>
                         <th>Time to Review</th>
                         <th>Time to Merge</th>
                         <th>Opened Date</th>
@@ -490,6 +555,27 @@ export default function App() {
                             <span className={`state-pill state-${pr.state}`}>
                               {pr.state}
                             </span>
+                          </td>
+                          <td>
+                            <span
+                              className={`ci-pill ci-${pr.ciStatus ?? 'unknown'}`}
+                              title={
+                                pr.ciStatus === null
+                                  ? 'No checks recorded'
+                                  : `CI ${pr.ciStatus}`
+                              }
+                            >
+                              {pr.ciStatus === 'failure'
+                                ? '✗ failing'
+                                : pr.ciStatus === 'success'
+                                  ? '✓ passing'
+                                  : pr.ciStatus === 'pending'
+                                    ? '… pending'
+                                    : '—'}
+                            </span>
+                          </td>
+                          <td className="metric-cell lines-cell">
+                            {pr.linesChanged.toLocaleString()}
                           </td>
                           <td className="metric-cell">{pr.timeToReviewFormatted}</td>
                           <td className="metric-cell">{pr.timeToMergeFormatted}</td>

@@ -5,6 +5,8 @@ import { decryptToken } from '../crypto/token';
 import {
   fetchAllPullRequests,
   fetchPullRequestReviews,
+  fetchPullRequestDetail,
+  fetchCommitCheckStatus,
   getGitHubRepo,
   listUserGitHubRepos,
   mapConcurrent,
@@ -181,28 +183,50 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
         github_pr_id: true,
         first_review_at: true,
         state: true,
+        ci_status: true,
+        additions: true,
+        deletions: true,
       },
     });
     const existingMap = new Map(existingPrs.map((p) => [p.github_pr_id, p]));
 
-    // 3. Fetch reviews concurrently with controlled batching (10 concurrent requests)
-    const prsWithReviews = await mapConcurrent(prs, 10, async (pr) => {
+    // 3. Fetch reviews, CI check status, and PR size concurrently with controlled
+    //    batching (10 concurrent requests). PR sizes live on the per-PR detail
+    //    endpoint (GitHub omits them from the list response), so a detail call is
+    //    issued when the row's additions/deletions are still at their zero default.
+    const prsWithMeta = await mapConcurrent(prs, 10, async (pr) => {
       const cached = existingMap.get(pr.number);
-      // If PR is closed/merged and already has its review timestamp cached, skip API roundtrip
-      if (
-        cached &&
-        (cached.state === 'closed' || cached.state === 'merged') &&
-        cached.first_review_at !== null
-      ) {
+      const isSettled = !!cached && (cached.state === 'closed' || cached.state === 'merged');
+      // Closed/merged PRs whose review timestamp, CI status, and size are all
+      // cached won't change on GitHub — skip all three API roundtrips.
+      const needsReviews = !(isSettled && cached && cached.first_review_at !== null);
+      const needsCi = !(isSettled && cached && cached.ci_status !== null);
+      const hasSize = !!(cached && (cached.additions > 0 || cached.deletions > 0));
+      const needsSize = !hasSize;
+
+      if (!needsReviews && !needsCi && !needsSize) {
         return {
           pr,
           reviews: [],
-          firstReviewAt: cached.first_review_at,
+          firstReviewAt: cached?.first_review_at ?? null,
+          ciStatus: cached?.ci_status ?? null,
+          additions: cached!.additions,
+          deletions: cached!.deletions,
           isCached: true,
         };
       }
 
-      const reviews = await fetchPullRequestReviews(repo.owner, repo.name, pr.number, token);
+      const [reviews, ciStatus, size] = await Promise.all([
+        needsReviews
+          ? fetchPullRequestReviews(repo.owner, repo.name, pr.number, token)
+          : Promise.resolve([]),
+        needsCi && pr.head?.sha
+          ? fetchCommitCheckStatus(repo.owner, repo.name, pr.head.sha, token)
+          : Promise.resolve(cached?.ci_status ?? null),
+        needsSize
+          ? fetchPullRequestDetail(repo.owner, repo.name, pr.number, token)
+          : Promise.resolve({ additions: cached?.additions ?? 0, deletions: cached?.deletions ?? 0 }),
+      ]);
       const prAuthor = pr.user?.login ?? '';
 
       // Non-author submitted reviews
@@ -219,12 +243,15 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
         pr,
         reviews,
         firstReviewAt,
+        ciStatus,
+        additions: size.additions,
+        deletions: size.deletions,
         isCached: false,
       };
     });
 
     const reviewPhaseMs = Date.now() - startTime;
-    console.log(`[Sync] Review phase done in ${(reviewPhaseMs / 1000).toFixed(1)}s (${prsWithReviews.length} PRs, concurrency 10).`);
+    console.log(`[Sync] Review+CI phase done in ${(reviewPhaseMs / 1000).toFixed(1)}s (${prsWithMeta.length} PRs, concurrency 10).`);
 
     // 4. Upsert PRs + reviewers. Each PR's reviewer replace is a small pooler-safe
     //    array-form transaction. No global interactive transaction: interactive
@@ -233,7 +260,7 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
     const writeStart = Date.now();
     let upsertedCount = 0;
 
-    for (const { pr, reviews, firstReviewAt, isCached } of prsWithReviews) {
+    for (const { pr, reviews, firstReviewAt, ciStatus, additions: linesAdded, deletions: linesDeleted, isCached } of prsWithMeta) {
       const prAuthor = pr.user?.login ?? 'ghost';
       const state = pr.merged_at ? 'merged' : pr.state;
       const openedAt = new Date(pr.created_at);
@@ -255,6 +282,9 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
           first_review_at: firstReviewAt,
           merged_at: mergedAt,
           closed_at: closedAt,
+          additions: linesAdded,
+          deletions: linesDeleted,
+          ci_status: ciStatus,
         },
         create: {
           repo_id: repo.id,
@@ -266,6 +296,9 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
           first_review_at: firstReviewAt,
           merged_at: mergedAt,
           closed_at: closedAt,
+          additions: linesAdded,
+          deletions: linesDeleted,
+          ci_status: ciStatus,
         },
       });
 
@@ -410,7 +443,62 @@ reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Res
     openedAt: p.opened_at.toISOString(),
   }));
 
-  // 5. Recent PRs for tabular view
+  // 5. CI failure rate by PR size
+  // Bucket thresholds (total lines changed = additions + deletions).
+  const SIZE_BUCKETS = [
+    { key: 'small', label: 'Small', sizeRange: '< 100 lines' },
+    { key: 'medium', label: 'Medium', sizeRange: '100 – 499 lines' },
+    { key: 'large', label: 'Large', sizeRange: '≥ 500 lines' },
+  ] as const;
+
+  const sizeBucketKey = (lines: number): (typeof SIZE_BUCKETS)[number]['key'] => {
+    if (lines < 100) return 'small';
+    if (lines < 500) return 'medium';
+    return 'large';
+  };
+
+  const bucketAcc = new Map<string, { prCount: number; pass: number; fail: number; unknown: number }>();
+  let hasCiData = false;
+  for (const p of prs) {
+    const lines = p.additions + p.deletions;
+    const key = sizeBucketKey(lines);
+    const bucket = bucketAcc.get(key) ?? { prCount: 0, pass: 0, fail: 0, unknown: 0 };
+    bucket.prCount += 1;
+    if (p.ci_status === 'failure') {
+      bucket.fail += 1;
+      hasCiData = true;
+    } else if (p.ci_status === 'success') {
+      bucket.pass += 1;
+      hasCiData = true;
+    } else {
+      bucket.unknown += 1;
+    }
+    bucketAcc.set(key, bucket);
+  }
+
+  const ciByPrSize = {
+    hasCiData,
+    buckets: SIZE_BUCKETS.map((s) => {
+      const b = bucketAcc.get(s.key);
+      const prCount = b?.prCount ?? 0;
+      const ciFailureCount = b?.fail ?? 0;
+      const ciPassCount = b?.pass ?? 0;
+      const ciUnknownCount = b?.unknown ?? 0;
+      const decided = ciFailureCount + ciPassCount;
+      return {
+        key: s.key,
+        label: s.label,
+        sizeRange: s.sizeRange,
+        prCount,
+        ciFailureCount,
+        ciPassCount,
+        ciUnknownCount,
+        failureRate: decided > 0 ? Number(((ciFailureCount / decided) * 100).toFixed(1)) : null,
+      };
+    }),
+  };
+
+  // 6. Recent PRs for tabular view
   const recentPrs = prs.slice(0, 30).map((p) => {
     const timeToReviewHours = p.first_review_at
       ? Math.max(0, p.first_review_at.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
@@ -431,6 +519,8 @@ reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Res
       timeToReviewFormatted: formatDuration(timeToReviewHours),
       timeToMergeFormatted: formatDuration(timeToMergeHours),
       reviewerCount: p.reviewers.length,
+      linesChanged: p.additions + p.deletions,
+      ciStatus: p.ci_status,
     };
   });
 
@@ -467,6 +557,7 @@ reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Res
         staleThresholdDays: STALE_DAYS,
         stalePrs: stalePrDetails,
       },
+      ciByPrSize,
       summary: {
         totalPrs: prs.length,
         openPrs: openPrs.length,

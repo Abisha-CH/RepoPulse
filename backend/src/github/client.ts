@@ -54,6 +54,13 @@ export interface GitHubPR {
   closed_at: string | null;
   merged_at: string | null;
   draft?: boolean;
+  // Lines changed — already returned by the pulls list API.
+  additions?: number;
+  deletions?: number;
+  // Head commit SHA, used to query check status.
+  head: {
+    sha: string;
+  };
 }
 
 export interface GitHubReview {
@@ -249,6 +256,97 @@ export async function fetchPullRequestReviews(
     // If a PR was deleted or reviews endpoint returns 404, return empty list gracefully
     if (err instanceof GitHubApiError && err.status === 404) {
       return [];
+    }
+    throw err;
+  }
+}
+
+interface GitHubCheckRun {
+  status: string; // 'queued' | 'in_progress' | 'completed'
+  conclusion: string | null; // 'success' | 'failure' | 'timed_out' | 'neutral' | ... | null
+}
+
+interface GitHubCheckRunsResponse {
+  total_count: number;
+  check_runs: GitHubCheckRun[];
+}
+
+/**
+ * Fetch the latest check-run status for a commit via the GitHub Checks API
+ * (GET /repos/{owner}/{repo}/commits/{sha}/check-runs?filter=latest).
+ *
+ * Returns:
+ *   'failure'  — a completed run failed, timed out, or requires action
+ *   'pending'  — at least one run is still queued / in progress
+ *   'success'  — at least one completed run and none failed or pending
+ *   null       — no check runs configured on this repo (no CI signal)
+ *
+ * 404 (or an empty result set) is treated as "no CI", mirroring the graceful
+ * handling in fetchPullRequestReviews.
+ */
+export async function fetchCommitCheckStatus(
+  owner: string,
+  name: string,
+  sha: string,
+  token: string
+): Promise<string | null> {
+  try {
+    const data = await githubFetch<GitHubCheckRunsResponse>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/check-runs?filter=latest&per_page=100`,
+      token
+    );
+
+    const runs = Array.isArray(data?.check_runs) ? data.check_runs : [];
+    if (data?.total_count === 0 || runs.length === 0) {
+      return null;
+    }
+
+    const FAILURES = new Set(['failure', 'timed_out', 'action_required']);
+
+    if (runs.some((r) => r.status === 'completed' && r.conclusion && FAILURES.has(r.conclusion))) {
+      return 'failure';
+    }
+    if (runs.some((r) => r.status === 'queued' || r.status === 'in_progress')) {
+      return 'pending';
+    }
+    return 'success';
+  } catch (err) {
+    // A commit with unknown/no checks surfaces as 404 — treat as no CI signal.
+    if (err instanceof GitHubApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+interface GitHubPullDetail {
+  additions?: number;
+  deletions?: number;
+}
+
+/**
+ * Fetch the individual pull request so we get accurate line counts.
+ *
+ * NOTE: the List Pull Requests endpoint intentionally omits `additions` /
+ * `deletions` / `changed_files` (GitHub returns real numbers only on the
+ * per-PR endpoint), so synchronizing PR size requires one detail call per PR.
+ * Returns 0/0 on a 404 (deleted PR), mirroring the review-fetch fallback.
+ */
+export async function fetchPullRequestDetail(
+  owner: string,
+  name: string,
+  pullNumber: number,
+  token: string
+): Promise<{ additions: number; deletions: number }> {
+  try {
+    const pr = await githubFetch<GitHubPullDetail>(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullNumber}`,
+      token
+    );
+    return { additions: pr.additions ?? 0, deletions: pr.deletions ?? 0 };
+  } catch (err) {
+    if (err instanceof GitHubApiError && err.status === 404) {
+      return { additions: 0, deletions: 0 };
     }
     throw err;
   }

@@ -662,6 +662,100 @@ body {
   color: var(--red);
 }
 
+/* CI Status Pills */
+.ci-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+  text-transform: capitalize;
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.ci-success {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--green);
+}
+
+.ci-failure {
+  background: rgba(248, 81, 73, 0.2);
+  color: var(--red);
+}
+
+.ci-pending {
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--yellow);
+}
+
+.ci-unknown {
+  background: var(--tag-bg);
+  color: var(--muted);
+}
+
+.lines-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* CI Failure Rate by PR Size */
+.ci-bucket-table {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ci-bucket-row {
+  display: grid;
+  grid-template-columns: 2fr 0.6fr 0.8fr 0.8fr 0.8fr 1.2fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+}
+
+.ci-bucket-head {
+  background: transparent;
+  border: none;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0 12px 4px;
+}
+
+.ci-bucket-name {
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ci-bucket-range {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.ci-pass {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.ci-fail {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.ci-unknown-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Spinners & Loading States */
 .login-card {
   max-width: 420px;

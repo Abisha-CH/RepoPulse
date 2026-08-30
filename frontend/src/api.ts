@@ -50,6 +50,24 @@ export interface RecentPullRequest {
   timeToReviewFormatted: string;
   timeToMergeFormatted: string;
   reviewerCount: number;
+  linesChanged: number;
+  ciStatus: 'success' | 'failure' | 'pending' | null;
+}
+
+export interface CiSizeBucket {
+  key: 'small' | 'medium' | 'large';
+  label: string;
+  sizeRange: string;
+  prCount: number;
+  ciFailureCount: number;
+  ciPassCount: number;
+  ciUnknownCount: number;
+  failureRate: number | null;
+}
+
+export interface CiByPrSize {
+  hasCiData: boolean;
+  buckets: CiSizeBucket[];
 }
 
 export interface RepoMetricsResponse {
@@ -84,6 +102,7 @@ export interface RepoMetricsResponse {
       staleThresholdDays: number;
       stalePrs: StalePrDetail[];
     };
+    ciByPrSize: CiByPrSize;
     summary: {
       totalPrs: number;
       openPrs: number;
