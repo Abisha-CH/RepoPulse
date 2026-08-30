@@ -174,9 +174,9 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
 ## 🏆 Public Repo Leaderboard
 
-RepoPulse ships a **public, login-free leaderboard** at `/leaderboard` (linked from the dashboard header and the login screen). It aggregates every repository that has ever been synced by any user — not just your own — and ranks them by an overall engineering health score.
+RepoPulse ships a **public, login-free leaderboard** at `/leaderboard` (linked from the dashboard header and the login screen). It aggregates every **public** repository that has ever been synced by any user — not just your own — and ranks them by an overall engineering health score.
 
-The leaderboard is reachable without authentication and exposes **only aggregate, repo-level data** (name, health score, and per-metric sub-scores). It never exposes anything tied to an individual user account, such as connected-repo lists or synced PR metadata tied to a specific login.
+**Privacy:** Only repos GitHub reports as **public** ever appear here. Repo visibility (`public`/`private`) is captured from the GitHub API at connect time and refreshed on every sync; private repos are filtered out entirely at the query level, so they never surface regardless of their sync status. A repo whose visibility is unknown is treated as private until a sync confirms it is public. The leaderboard is reachable without authentication and exposes **only aggregate, repo-level data** (name, health score, and per-metric sub-scores). It never exposes anything tied to an individual user account, such as connected-repo lists or synced PR metadata tied to a specific login.
 
 ### Health Score Formula (0–100)
 

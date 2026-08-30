@@ -11,17 +11,20 @@ export const publicRouter = Router();
 /**
  * GET /public/leaderboard — public, NO auth required.
  *
- * Ranks every repository that has ever been synced by any user by an overall
- * 0–100 health score (best first), computed from the shared metrics in
- * src/metrics/health.ts. This deliberately exposes only repo-level aggregates:
+ * Ranks every PUBLIC repository that has ever been synced by any user by an
+ * overall 0–100 health score (best first), computed from the shared metrics in
+ * src/metrics/health.ts. Private repos are excluded entirely (see Repo model's
+ * is_private comment). This deliberately exposes only repo-level aggregates:
  * owner/name, health score, and the underlying metric values — no emails,
  * usernames, tokens, or anything tied to an individual user account.
  */
 publicRouter.get('/public/leaderboard', async (_req: Request, res: Response) => {
   try {
-    // Single query: every repo with its PR rows (base fields only — the shared
-    // metric computation does not need reviewer rows, so we don't load them).
+    // Single query: every PUBLIC repo with its PR rows (base fields only — the
+    // shared metric computation does not need reviewer rows, so we don't load
+    // them). Private repos are excluded entirely so they never surface here.
     const repos = await prisma.repo.findMany({
+      where: { is_private: false },
       include: { pullRequests: true },
       orderBy: { name: 'asc' },
     });

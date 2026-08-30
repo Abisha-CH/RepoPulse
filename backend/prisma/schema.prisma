@@ -31,6 +31,12 @@ model Repo {
   owner              String
   name               String
   connected_by_user_id String
+  // GitHub visibility flag. Defaults to TRUE (private) deliberately: rows created
+  // before this column existed have no flag, and treating "unknown" as private
+  // guarantees a repo never leaks onto the public /leaderboard by default. A
+  // connect or sync sets the real value from the GitHub API. Public leaderboard
+  // exposes only repos where this is false.
+  is_private         Boolean  @default(true)
 
   connected_by_user User     @relation(fields: [connected_by_user_id], references: [id], onDelete: Cascade)
   pullRequests      PullRequest[]

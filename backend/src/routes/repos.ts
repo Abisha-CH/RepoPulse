@@ -58,6 +58,7 @@ reposRouter.get('/repos', requireAuth, async (req: Request, res: Response) => {
       name: r.name,
       fullName: `${r.owner}/${r.name}`,
       pullRequestCount: r._count.pullRequests,
+      isPrivate: r.is_private,
     })),
   });
 });
@@ -108,12 +109,14 @@ reposRouter.post('/repos', requireAuth, async (req: Request, res: Response) => {
       update: {
         connected_by_user_id: user.id,
         github_repo_id: ghRepo.id,
+        is_private: ghRepo.isPrivate,
       },
       create: {
         owner: ghRepo.owner,
         name: ghRepo.name,
         github_repo_id: ghRepo.id,
         connected_by_user_id: user.id,
+        is_private: ghRepo.isPrivate,
       },
     });
 
@@ -156,6 +159,23 @@ reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Respo
 
   try {
     const token = decryptToken(user.access_token);
+
+    // 0. Refresh the repo's visibility flag. This also backfills repos connected
+    //    before the is_private column existed (they defaulted to private and are
+    //    hidden from the public /leaderboard until a sync confirms public). One
+    //    cheap API call; best-effort so a visibility hiccup never aborts a sync.
+    try {
+      const ghRepo = await getGitHubRepo(repo.owner, repo.name, token);
+      if (ghRepo.isPrivate !== repo.is_private) {
+        await prisma.repo.update({
+          where: { id: repo.id },
+          data: { is_private: ghRepo.isPrivate },
+        });
+        console.log(`[Sync] Updated ${repo.owner}/${repo.name} visibility -> ${ghRepo.isPrivate ? 'private' : 'public'}.`);
+      }
+    } catch (err) {
+      console.warn(`[Sync] Could not refresh visibility for ${repo.owner}/${repo.name}:`, err instanceof Error ? err.message : err);
+    }
 
     // 1. Fetch recent PRs across pages (up to 200 PRs)
     const prs = await fetchAllPullRequests(repo.owner, repo.name, token);
