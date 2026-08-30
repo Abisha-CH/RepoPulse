@@ -192,6 +192,8 @@ Each repository gets a score between **0 (worst)** and **100 (healthiest)**. Eve
 **Missing-data handling:** When a repo has no data for a component (e.g., no merged PRs, or no CI configured), that component is *excluded* — its weight is dropped from both sides, and the remaining weights are renormalized automatically. A repo with no synced PR data at all gets `score: null` and appears below the scored repos, sorted by PR count.
 
 Refreshed **on demand** whenever a sync runs; the page shows the timestamp it was generated at.
+
+
  ![RepoPulse Leaderboard ](screenshots/leaderboard-1.png)
  
 ---
