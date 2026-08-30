@@ -7,6 +7,7 @@ import { meRouter } from './routes/me';
 
 export function createApp(): express.Express {
   const app = express();
+  app.set('trust proxy', 1);
   app.disable('x-powered-by');
   app.use(cookieParser());
   app.use(express.json());

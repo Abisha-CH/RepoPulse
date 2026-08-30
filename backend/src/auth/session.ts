@@ -10,17 +10,15 @@ const JWT_ISSUER = 'repopulse';
 
 /**
  * Shared cookie options for both the session cookie and the OAuth state cookie.
- * In development the browser talks to the Vite server on :5173 while OAuth
- * callbacks land on the backend :3000 — both are `localhost`, so pinning the
- * cookie to the hostname (ports are ignored for cookie scope) lets it travel
- * between the two. Production is single-origin, so no Domain is set.
+ * Omit `domain` so the browser treats it as a host-only cookie for the current host,
+ * which allows the cookie to work seamlessly across localhost, ngrok tunnels, and prod.
  */
 export function sessionCookieOptions(): CookieOptions {
   return {
     httpOnly: true,
     sameSite: 'lax',
-    secure: config.isProd,
-    domain: config.isProd ? undefined : 'localhost',
+    secure: config.isProd || config.appUrl.startsWith('https:'),
+    domain: undefined,
     path: '/',
   };
 }

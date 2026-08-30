@@ -15,16 +15,19 @@ function optional(name: string, fallback: string): string {
   return value && value.trim() !== '' ? value.trim() : fallback;
 }
 
+const rawAppUrl = optional('APP_URL', optional('PUBLIC_URL', 'http://localhost:3000')).replace(/\/+$/, '');
+
 export const config = {
   isProd: process.env.NODE_ENV === 'production',
   port: Number(process.env.PORT ?? 3000),
+  appUrl: rawAppUrl,
 
   githubClientId: required('GITHUB_CLIENT_ID'),
   githubClientSecret: required('GITHUB_CLIENT_SECRET'),
-  githubRedirectUri: optional('GITHUB_REDIRECT_URI', 'http://localhost:3000/auth/github/callback'),
+  githubRedirectUri: optional('GITHUB_REDIRECT_URI', `${rawAppUrl}/auth/github/callback`),
 
   // Where to send the browser after a successful OAuth callback.
-  // Single-origin prod: '/' resolves to the same deployment. Development uses the Vite server.
+  // Defaults to '/' (relative redirect keeps user on current host, whether ngrok or localhost)
   frontendOrigin: optional('FRONTEND_ORIGIN', '/'),
 
   sessionSecret: required('SESSION_SECRET'),
