@@ -1,0 +1,449 @@
+import { Router, type Request, type Response } from 'express';
+import { requireAuth } from '../auth/middleware';
+import { prisma } from '../db';
+import { decryptToken } from '../crypto/token';
+import {
+  fetchAllPullRequests,
+  fetchPullRequestReviews,
+  getGitHubRepo,
+  listUserGitHubRepos,
+  mapConcurrent,
+  GitHubApiError,
+  GitHubRateLimitError,
+} from '../github/client';
+
+export const reposRouter = Router();
+
+// Helper to format hour durations into clean human strings ("2.5 hrs", "3.1 days", "45 mins")
+function formatDuration(hours: number | null): string {
+  if (hours === null || isNaN(hours)) {
+    return 'N/A';
+  }
+  if (hours < 1) {
+    const mins = Math.max(1, Math.round(hours * 60));
+    return `${mins}m`;
+  }
+  if (hours < 48) {
+    return `${hours.toFixed(1)}h`;
+  }
+  const days = (hours / 24).toFixed(1);
+  return `${days}d`;
+}
+
+/**
+ * GET /user/github-repos — list user's accessible GitHub repos for quick selection.
+ */
+reposRouter.get('/user/github-repos', requireAuth, async (req: Request, res: Response) => {
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user) {
+    res.status(401).json({ error: 'User not found.' });
+    return;
+  }
+
+  try {
+    const token = decryptToken(user.access_token);
+    const repos = await listUserGitHubRepos(token);
+    res.json({ repos });
+  } catch (err) {
+    handleApiError(res, err);
+  }
+});
+
+/**
+ * GET /repos — list all connected repos for the current user.
+ */
+reposRouter.get('/repos', requireAuth, async (req: Request, res: Response) => {
+  const repos = await prisma.repo.findMany({
+    where: { connected_by_user_id: req.userId },
+    include: {
+      _count: {
+        select: { pullRequests: true },
+      },
+    },
+    orderBy: { name: 'asc' },
+  });
+
+  res.json({
+    repos: repos.map((r) => ({
+      id: r.id,
+      githubRepoId: r.github_repo_id,
+      owner: r.owner,
+      name: r.name,
+      fullName: `${r.owner}/${r.name}`,
+      pullRequestCount: r._count.pullRequests,
+    })),
+  });
+});
+
+/**
+ * POST /repos — connect a GitHub repository.
+ */
+reposRouter.post('/repos', requireAuth, async (req: Request, res: Response) => {
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user) {
+    res.status(401).json({ error: 'User not found.' });
+    return;
+  }
+
+  let owner = typeof req.body.owner === 'string' ? req.body.owner.trim() : '';
+  let name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+
+  // Support full string input "owner/name" or "https://github.com/owner/name"
+  if (!owner && typeof req.body.repo === 'string') {
+    const cleaned = req.body.repo
+      .replace(/^https?:\/\/github\.com\//i, '')
+      .replace(/\.git$/i, '')
+      .replace(/^\/+|\/+$/g, '')
+      .trim();
+    const parts = cleaned.split('/');
+    if (parts.length === 2) {
+      owner = parts[0] ?? '';
+      name = parts[1] ?? '';
+    }
+  }
+
+  if (!owner || !name) {
+    res.status(400).json({ error: 'Please provide both owner and name (e.g., "facebook/react").' });
+    return;
+  }
+
+  try {
+    const token = decryptToken(user.access_token);
+    const ghRepo = await getGitHubRepo(owner, name, token);
+
+    const repo = await prisma.repo.upsert({
+      where: {
+        owner_name: {
+          owner: ghRepo.owner,
+          name: ghRepo.name,
+        },
+      },
+      update: {
+        connected_by_user_id: user.id,
+        github_repo_id: ghRepo.id,
+      },
+      create: {
+        owner: ghRepo.owner,
+        name: ghRepo.name,
+        github_repo_id: ghRepo.id,
+        connected_by_user_id: user.id,
+      },
+    });
+
+    res.status(201).json({
+      repo: {
+        id: repo.id,
+        githubRepoId: repo.github_repo_id,
+        owner: repo.owner,
+        name: repo.name,
+        fullName: `${repo.owner}/${repo.name}`,
+      },
+    });
+  } catch (err) {
+    handleApiError(res, err);
+  }
+});
+
+/**
+ * POST /repos/:id/sync — sync all Pull Requests & Reviews from GitHub.
+ */
+reposRouter.post('/repos/:id/sync', requireAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const repo = await prisma.repo.findFirst({
+    where: { id, connected_by_user_id: req.userId },
+  });
+
+  if (!repo) {
+    res.status(404).json({ error: 'Repository not found or not connected.' });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (!user) {
+    res.status(401).json({ error: 'User not found.' });
+    return;
+  }
+
+  try {
+    const token = decryptToken(user.access_token);
+
+    // 1. Fetch all PRs across pages
+    const prs = await fetchAllPullRequests(repo.owner, repo.name, token);
+
+    // 2. Fetch reviews concurrently with controlled batching (5 concurrent requests)
+    const prsWithReviews = await mapConcurrent(prs, 5, async (pr) => {
+      const reviews = await fetchPullRequestReviews(repo.owner, repo.name, pr.number, token);
+      const prAuthor = pr.user?.login ?? '';
+
+      // Non-author submitted reviews
+      const validReviews = reviews
+        .filter((r) => r.submitted_at && r.user?.login && r.user.login !== prAuthor)
+        .sort((a, b) => new Date(a.submitted_at!).getTime() - new Date(b.submitted_at!).getTime());
+
+      const firstReviewAt = validReviews.length > 0 && validReviews[0]?.submitted_at
+        ? new Date(validReviews[0].submitted_at)
+        : null;
+
+      return {
+        pr,
+        reviews,
+        firstReviewAt,
+      };
+    });
+
+    // 3. Upsert PRs and Reviewers in the database
+    let upsertedCount = 0;
+
+    for (const { pr, reviews, firstReviewAt } of prsWithReviews) {
+      const prAuthor = pr.user?.login ?? 'ghost';
+      const state = pr.merged_at ? 'merged' : pr.state;
+      const openedAt = new Date(pr.created_at);
+      const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
+      const closedAt = pr.closed_at ? new Date(pr.closed_at) : null;
+
+      const savedPr = await prisma.pullRequest.upsert({
+        where: {
+          repo_id_github_pr_id: {
+            repo_id: repo.id,
+            github_pr_id: pr.number,
+          },
+        },
+        update: {
+          author: prAuthor,
+          title: pr.title,
+          state,
+          opened_at: openedAt,
+          first_review_at: firstReviewAt,
+          merged_at: mergedAt,
+          closed_at: closedAt,
+        },
+        create: {
+          repo_id: repo.id,
+          github_pr_id: pr.number,
+          author: prAuthor,
+          title: pr.title,
+          state,
+          opened_at: openedAt,
+          first_review_at: firstReviewAt,
+          merged_at: mergedAt,
+          closed_at: closedAt,
+        },
+      });
+
+      // Synchronize reviewers for this PR
+      const uniqueReviewers = new Map<string, Date>();
+      for (const rev of reviews) {
+        if (rev.user?.login && rev.submitted_at) {
+          const dt = new Date(rev.submitted_at);
+          const existing = uniqueReviewers.get(rev.user.login);
+          if (!existing || dt < existing) {
+            uniqueReviewers.set(rev.user.login, dt);
+          }
+        }
+      }
+
+      await prisma.reviewer.deleteMany({ where: { pull_request_id: savedPr.id } });
+      if (uniqueReviewers.size > 0) {
+        await prisma.reviewer.createMany({
+          data: Array.from(uniqueReviewers.entries()).map(([username, reviewed_at]) => ({
+            pull_request_id: savedPr.id,
+            username,
+            reviewed_at,
+          })),
+        });
+      }
+
+      upsertedCount += 1;
+    }
+
+    res.json({
+      success: true,
+      count: upsertedCount,
+      message: `Successfully synced ${upsertedCount} pull request(s) for ${repo.owner}/${repo.name}.`,
+    });
+  } catch (err) {
+    handleApiError(res, err);
+  }
+});
+
+/**
+ * GET /repos/:id/metrics — compute and return engineering health metrics.
+ */
+reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const repo = await prisma.repo.findFirst({
+    where: { id, connected_by_user_id: req.userId },
+  });
+
+  if (!repo) {
+    res.status(404).json({ error: 'Repository not found or not connected.' });
+    return;
+  }
+
+  const prs = await prisma.pullRequest.findMany({
+    where: { repo_id: repo.id },
+    include: { reviewers: true },
+    orderBy: { opened_at: 'desc' },
+  });
+
+  const now = Date.now();
+  const STALE_DAYS = 7;
+  const staleThresholdMs = STALE_DAYS * 24 * 60 * 60 * 1000;
+
+  // 1. Time to First Review
+  const reviewedPrs = prs.filter((p) => p.first_review_at !== null);
+  const reviewDurationsHours = reviewedPrs.map(
+    (p) => Math.max(0, p.first_review_at!.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
+  );
+
+  const avgTimeToReviewHours =
+    reviewDurationsHours.length > 0
+      ? reviewDurationsHours.reduce((a, b) => a + b, 0) / reviewDurationsHours.length
+      : null;
+
+  // 2. Time to Merge
+  const mergedPrs = prs.filter((p) => p.merged_at !== null);
+  const mergeDurationsHours = mergedPrs.map(
+    (p) => Math.max(0, p.merged_at!.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
+  );
+
+  const avgTimeToMergeHours =
+    mergeDurationsHours.length > 0
+      ? mergeDurationsHours.reduce((a, b) => a + b, 0) / mergeDurationsHours.length
+      : null;
+
+  // 3. Bus Factor & PR Author Concentration
+  const totalMerged = mergedPrs.length;
+  const authorCounts: Record<string, number> = {};
+  for (const p of mergedPrs) {
+    authorCounts[p.author] = (authorCounts[p.author] || 0) + 1;
+  }
+
+  const authorRankings = Object.entries(authorCounts)
+    .map(([author, count]) => ({
+      author,
+      count,
+      percentage: totalMerged > 0 ? Math.round((count / totalMerged) * 100) : 0,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const top1Share = authorRankings[0]?.percentage ?? 0;
+  const top2Count = authorRankings.slice(0, 2).reduce((sum, a) => sum + a.count, 0);
+  const top2Share = totalMerged > 0 ? Math.round((top2Count / totalMerged) * 100) : 0;
+
+  let busFactorRisk: 'High' | 'Moderate' | 'Low' | 'Insufficient Data';
+  let busFactorScoreDescription: string;
+
+  if (totalMerged === 0) {
+    busFactorRisk = 'Insufficient Data';
+    busFactorScoreDescription = 'No merged pull requests available yet to compute concentration.';
+  } else if (top1Share >= 70 || (totalMerged >= 3 && top2Share >= 85)) {
+    busFactorRisk = 'High';
+    busFactorScoreDescription = `High knowledge concentration: ${top1Share}% of merged PRs authored by top contributor (${authorRankings[0]?.author}).`;
+  } else if (top1Share >= 50 || top2Share >= 70) {
+    busFactorRisk = 'Moderate';
+    busFactorScoreDescription = `Moderate concentration: top 2 contributors author ${top2Share}% of merged PRs.`;
+  } else {
+    busFactorRisk = 'Low';
+    busFactorScoreDescription = `Healthy contribution distribution across ${authorRankings.length} authors.`;
+  }
+
+  // 4. Stale PRs
+  const openPrs = prs.filter((p) => p.state === 'open');
+  const stalePrs = openPrs.filter((p) => now - p.opened_at.getTime() > staleThresholdMs);
+
+  const stalePrDetails = stalePrs.map((p) => ({
+    githubPrId: p.github_pr_id,
+    title: p.title,
+    author: p.author,
+    daysOpen: Math.floor((now - p.opened_at.getTime()) / (24 * 60 * 60 * 1000)),
+    openedAt: p.opened_at.toISOString(),
+  }));
+
+  // 5. Recent PRs for tabular view
+  const recentPrs = prs.slice(0, 30).map((p) => {
+    const timeToReviewHours = p.first_review_at
+      ? Math.max(0, p.first_review_at.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
+      : null;
+    const timeToMergeHours = p.merged_at
+      ? Math.max(0, p.merged_at.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
+      : null;
+
+    return {
+      id: p.id,
+      number: p.github_pr_id,
+      title: p.title,
+      author: p.author,
+      state: p.state,
+      openedAt: p.opened_at.toISOString(),
+      firstReviewAt: p.first_review_at ? p.first_review_at.toISOString() : null,
+      mergedAt: p.merged_at ? p.merged_at.toISOString() : null,
+      timeToReviewFormatted: formatDuration(timeToReviewHours),
+      timeToMergeFormatted: formatDuration(timeToMergeHours),
+      reviewerCount: p.reviewers.length,
+    };
+  });
+
+  res.json({
+    repo: {
+      id: repo.id,
+      owner: repo.owner,
+      name: repo.name,
+      fullName: `${repo.owner}/${repo.name}`,
+    },
+    metrics: {
+      timeToFirstReview: {
+        averageHours: avgTimeToReviewHours !== null ? Number(avgTimeToReviewHours.toFixed(1)) : null,
+        formatted: formatDuration(avgTimeToReviewHours),
+        sampleSize: reviewedPrs.length,
+      },
+      timeToMerge: {
+        averageHours: avgTimeToMergeHours !== null ? Number(avgTimeToMergeHours.toFixed(1)) : null,
+        formatted: formatDuration(avgTimeToMergeHours),
+        sampleSize: mergedPrs.length,
+      },
+      busFactor: {
+        risk: busFactorRisk,
+        description: busFactorScoreDescription,
+        top1SharePercentage: top1Share,
+        top2SharePercentage: top2Share,
+        topContributors: authorRankings.slice(0, 5),
+        methodologyTradeoff:
+          'Approximated via PR author concentration (% of merged PRs authored by top contributors). Note: This reflects key contributor dependency at the PR level without requiring full git line-level blame analysis.',
+      },
+      stalePrs: {
+        staleCount: stalePrs.length,
+        openCount: openPrs.length,
+        staleThresholdDays: STALE_DAYS,
+        stalePrs: stalePrDetails,
+      },
+      summary: {
+        totalPrs: prs.length,
+        openPrs: openPrs.length,
+        mergedPrs: mergedPrs.length,
+        closedPrs: prs.filter((p) => p.state === 'closed').length,
+      },
+    },
+    recentPullRequests: recentPrs,
+  });
+});
+
+function handleApiError(res: Response, err: unknown): void {
+  console.error('API Route Error:', err);
+  if (err instanceof GitHubRateLimitError) {
+    res.status(429).json({
+      error: err.message,
+      rateLimitReset: err.resetAt.toISOString(),
+      remaining: err.remaining,
+    });
+    return;
+  }
+  if (err instanceof GitHubApiError) {
+    res.status(err.status >= 400 && err.status < 600 ? err.status : 502).json({
+      error: err.message,
+    });
+    return;
+  }
+  const message = err instanceof Error ? err.message : String(err);
+  res.status(500).json({ error: message });
+}

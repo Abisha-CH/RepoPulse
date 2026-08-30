@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { config } from '../config';
 import { prisma } from '../db';
 import { encryptToken } from '../crypto/token';
-import { issueSessionCookie, OAUTH_STATE_COOKIE, sessionCookieOptions } from './session';
+import { clearSessionCookie, issueSessionCookie, OAUTH_STATE_COOKIE, sessionCookieOptions } from './session';
 
 const GITHUB_AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
@@ -84,6 +84,12 @@ githubAuthRouter.get('/callback', async (req, res) => {
 
   issueSessionCookie(res, user.id);
   res.redirect(config.frontendOrigin);
+});
+
+/** Step 3 — Log out current user and clear session cookie */
+githubAuthRouter.post('/logout', (_req, res) => {
+  clearSessionCookie(res);
+  res.json({ ok: true });
 });
 
 async function exchangeCodeForToken(code: string): Promise<string> {

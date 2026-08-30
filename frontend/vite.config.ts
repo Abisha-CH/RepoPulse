@@ -12,6 +12,8 @@ export default defineConfig({
       '/auth': 'http://localhost:3000',
       '/me': 'http://localhost:3000',
       '/health': 'http://localhost:3000',
+      '/repos': 'http://localhost:3000',
+      '/user': 'http://localhost:3000',
     },
   },
   build: {

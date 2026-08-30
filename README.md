@@ -1,158 +1,170 @@
-# RepoPulse
+# RepoPulse 📊
 
-GitHub engineering health dashboard — pull-request cycle times, review latency, and
-more. Day 1: monorepo scaffold, Postgres schema, GitHub OAuth, and a deployed skeleton.
+> **GitHub Engineering Health & Velocity Dashboard**  
+> Measure pull-request cycle times, review latency, contributor concentration, and workflow health with on-demand GitHub synchronization.
 
-## Architecture
+---
 
-- **Monorepo** (npm workspaces): [`backend/`](backend) Express + TypeScript API, [`frontend/`](frontend) Vite + React SPA.
-- **Single origin**: the backend serves the built frontend from `frontend/dist`, so the deployed app lives on **one URL**. That keeps OAuth cookies trivial (no CORS / cross-site cookie work) and gives you one stable public URL for GitHub webhooks later.
-- **Auth**: GitHub OAuth (Authorization Code + PKCE-less; `state` cookie protects against CSRF). Session is a **JWT in an httpOnly, SameSite=Lax cookie** (7-day expiry). The GitHub access token is stored **encrypted at rest** with AES-256-GCM.
+<!-- SCREENSHOT / DEMO PLACEHOLDER -->
+<!--
+  Capture a quick screenshot or GIF of the RepoPulse dashboard with synced repository metrics:
+  ![RepoPulse Dashboard Preview](docs/screenshots/dashboard-preview.png)
+-->
+
+---
+
+## 🌟 Why RepoPulse?
+
+Software engineering teams often struggle with invisible bottlenecks in their delivery pipeline:
+- **Delayed Code Reviews:** PRs sitting idle waiting for peer attention, slowing down feature velocity.
+- **Long Merge Lifecycles:** Friction in CI/CD, review cycles, or branch management leading to stale branches and painful merge conflicts.
+- **Knowledge Silos & Bus Factor Risk:** Disproportionate dependency on a single contributor for the majority of merged changes.
+- **Stale PR Accumulation:** Abandoned or forgotten PRs bloating the repository backlog.
+
+**RepoPulse** connects to your GitHub repositories, aggregates Pull Request and Review timelines, and computes actionable engineering health metrics in real time.
+
+---
+
+## 🚀 Key Features
+
+- 🔐 **GitHub OAuth 2.0 & Token Security:** Secure authorization code flow with session tokens and AES-256-GCM encryption for stored GitHub access tokens at rest.
+- 🔄 **On-Demand PR & Review Sync:** Multi-page pagination pulling pull requests and reviewer histories directly from the GitHub REST API.
+- ⏱️ **Rate-Limit Resilience:** Batch-controlled review fetching (5 concurrent workers) and structured 429 rate limit backoff handling with live reset countdowns.
+- 📊 **Core Engineering Health Metrics:**
+  - ⏱️ **Avg Time to First Review:** Duration from PR opening to the earliest non-author review.
+  - 🚀 **Avg Time to Merge:** Duration from PR opening to merge timestamp.
+  - ⚠️ **Stale Open PRs:** Real-time tracking of pull requests open for more than 7 days without merging.
+  - 👥 **Bus Factor / PR Author Concentration:** Quantifies knowledge distribution (% of merged PRs authored by top contributors) categorized as High, Moderate, or Low risk.
+- 📋 **Pull Request Activity Table:** Tabular breakdown of recent PRs with statuses, review timings, merge times, and contributor identities.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Backend** | Node.js, Express 5, TypeScript | REST API, GitHub client, metric compute engines |
+| **Database** | PostgreSQL, Prisma ORM | Relational storage for users, repos, PRs, and reviewers |
+| **Frontend** | React 19, Vite, TypeScript | Fast single-page application with responsive dark/light theme |
+| **Auth & Security** | JWT (httpOnly cookie), AES-256-GCM | Encrypted token storage and anti-CSRF OAuth state verification |
+| **Deployment** | Docker (Multi-stage build) | Production container bundling backend and static frontend |
+
+---
+
+## 📐 Architecture & Single-Origin Design
+
+RepoPulse is structured as an npm monorepo (`backend` and `frontend` workspaces). In production, the Express backend serves the pre-built React frontend as static assets from `frontend/dist`.
 
 ```
 Browser ── /auth/github/login ──▶ GitHub ──?code=...──▶ /auth/github/callback
                                                           │  exchange code for token
                                                           │  GET api.github.com/user
-                                                          │  upsert User (token encrypted)
+                                                          │  upsert User (AES-256 encrypted token)
                                                           ▼
                                                      Set-Cookie repopulse_session=JWT
-                                                     redirect ──▶ /  (SPA shows "Logged in as X")
+                                                     redirect ──▶ / (Dashboard SPA)
 ```
 
-## Local development
+This single-origin model eliminates cross-origin cookie issues and makes authentication work seamlessly across `localhost`, ngrok tunnels, and production URLs.
 
-Prereqs: Node ≥ 20, and a PostgreSQL database. The repo doesn't ship one — point `DATABASE_URL` at any Postgres (local, **or a free [Neon](https://neon.tech) database** — the connection string works identically in dev and prod).
+---
 
+## 💻 Local Development Setup
+
+### Prerequisites
+- **Node.js**: v20 or newer
+- **npm**: v9 or newer
+- **PostgreSQL**: Local instance or a free cloud instance (e.g., [Neon](https://neon.tech))
+
+### 1. Clone & Install Dependencies
 ```bash
-npm install                      # installs both workspaces
-cp backend/.env.example backend/.env
-# fill in GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET / SESSION_SECRET / DATABASE_URL
-
-npm run dev -w backend            # API on :3000 (serves last-built frontend)
-npm run dev -w frontend           # optional: Vite HMR on :5173 (proxies /auth, /me to :3000)
+git clone https://github.com/Abisha-CH/RepoPulse.git
+cd RepoPulse
+npm install
 ```
 
-First run against a fresh database:
+### 2. Configure Environment Variables
+Create `backend/.env` based on the template:
+```bash
+cp backend/.env.example backend/.env
+```
 
+Set the required environment variables:
+
+| Variable | Required | Description | Example / Default |
+| :--- | :---: | :--- | :--- |
+| `DATABASE_URL` | ✅ | PostgreSQL connection string | `postgresql://user:pass@ep-xyz.aws.neon.tech/repopulse?sslmode=require` |
+| `GITHUB_CLIENT_ID` | ✅ | GitHub OAuth App Client ID | `Ov23li...` |
+| `GITHUB_CLIENT_SECRET` | ✅ | GitHub OAuth App Client Secret | `4a8f...` |
+| `SESSION_SECRET` | ✅ | Random key for signing session JWTs | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
+| `GITHUB_REDIRECT_URI` | ⬜ | OAuth callback URL | `http://localhost:3000/auth/github/callback` (or your ngrok / prod URL) |
+| `ENCRYPTION_KEY` | ⬜ | 32-byte (64 hex chars) key for AES-256 token encryption | Derived from `SESSION_SECRET` if omitted |
+| `PORT` | ⬜ | Backend server listen port | `3000` |
+| `NODE_ENV` | ⬜ | Runtime environment | `development` (or `production`) |
+
+### 3. Register a GitHub OAuth App
+1. Go to **[GitHub Developer Settings → OAuth Apps → New OAuth App](https://github.com/settings/applications/new)**.
+2. Fill in:
+   - **Application name:** `RepoPulse (Local)`
+   - **Homepage URL:** `http://localhost:3000` (or `http://localhost:5173` if running Vite dev server)
+   - **Authorization callback URL:** `http://localhost:3000/auth/github/callback`
+3. Copy the **Client ID** and generate a **Client Secret**, then paste them into `backend/.env`.
+
+### 4. Initialize Database Schema
+Run Prisma migrations to create the database tables and generate the typed client:
 ```bash
 npm run db:generate -w backend
-npm run db:migrate -w backend     # creates + applies migrations (interactive)
+npm run db:migrate -w backend
 ```
 
-### GitHub OAuth App
+### 5. Start Development Servers
+- **Backend API (Port 3000):**
+  ```bash
+  npm run dev -w backend
+  ```
+- **Frontend SPA with Hot Module Replacement (Port 5173):**
+  ```bash
+  npm run dev -w frontend
+  ```
+  *(Note: The Vite dev server proxies all `/auth`, `/me`, `/repos`, and `/user` requests to `:3000` automatically).*
 
-Register one at **github.com → Settings → Developer settings → OAuth Apps → New OAuth App**.
+Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
-- Homepage URL: `http://localhost:3000`
-- Authorization callback URL: `http://localhost:3000/auth/github/callback`
-- Scopes requested: `read:user`, `user:email` (primary verified email is saved if public).
+---
 
-For a deployed instance, update the callback URL to `https://<your-app>.up.railway.app/auth/github/callback` after first deploy.
+## 📡 API Reference
 
-## Environment variables
+| Method | Endpoint | Auth | Description |
+| :--- | :--- | :---: | :--- |
+| `GET` | `/health` | No | Basic healthcheck endpoint returning `{ ok: true }` |
+| `GET` | `/auth/github/login` | No | Initiates GitHub OAuth authorization flow |
+| `GET` | `/auth/github/callback` | No | Exchanges OAuth code, upserts user with encrypted token, sets session cookie |
+| `POST` | `/auth/github/logout` | No | Clears user session cookie |
+| `GET` | `/me` | Yes | Returns authenticated user profile |
+| `GET` | `/user/github-repos` | Yes | Lists accessible repositories from user's GitHub account for autocomplete |
+| `GET` | `/repos` | Yes | Lists repositories connected by the user in RepoPulse |
+| `POST` | `/repos` | Yes | Connects a repository (`{ owner, name }` or `{ repo: "owner/name" }`) |
+| `POST` | `/repos/:id/sync` | Yes | On-demand sync of PRs and reviews from GitHub REST API |
+| `GET` | `/repos/:id/metrics` | Yes | Returns computed engineering velocity & health metrics for a repository |
 
-| Variable | Required | Description |
-| --- | --- | --- |
-| `DATABASE_URL` | ✅ | Postgres connection string (`postgresql://user:pass@host:5432/db?schema=public`). |
-| `GITHUB_CLIENT_ID` | ✅ | OAuth App client ID. |
-| `GITHUB_CLIENT_SECRET` | ✅ | OAuth App client secret. |
-| `SESSION_SECRET` | ✅ | Signs the session JWT. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `GITHUB_REDIRECT_URI` | ⬜ | Callback URL. Defaults to `http://localhost:3000/auth/github/callback`; set it to the deployed URL in production. |
-| `ENCRYPTION_KEY` | ⬜ | Optional 32-byte key (64 hex chars) for AES-256-GCM token encryption. If unset, derived deterministically from `SESSION_SECRET`. Generate: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `FRONTEND_ORIGIN` | ⬜ | Where the browser lands after login (`/` in single-origin prod; `http://localhost:5173` in dev). |
-| `PORT` | ⬜ | Listen port (Railway injects this automatically). Default `3000`. |
-| `NODE_ENV` | ⬜ | Set to `production` on Railway. |
+---
 
-> Rotation note: because the encryption key is derived from `SESSION_SECRET` by default, rotating `SESSION_SECRET` invalidates sessions *and* makes stored GitHub tokens unreadable until the user logs in again. For long-lived tokens, set `ENCRYPTION_KEY` explicitly.
+## ⚠️ Known Limitations & Methodological Tradeoffs
 
-## Database schema
+1. **Manual On-Demand Sync (Webhooks Pending):**
+   - Repository data updates when the user triggers **Sync Now** in the dashboard. Automatic real-time ingestion via GitHub Webhooks is deferred to a future milestone.
+2. **Bus Factor Approximation via PR Author Concentration:**
+   - Bus factor is approximated using the proportion of merged PRs authored by top contributors (Top 1 and Top 2 share).
+   - *Tradeoff:* True file-by-file line-level blame analysis requires deep git tree clones and heavy CPU overhead. Measuring PR author concentration gives an immediate, lightweight operational indicator of key contributor dependencies without heavy infrastructure.
+3. **Review Latency Measurement:**
+   - Time to first review evaluates the earliest review timestamp submitted by a peer (excluding self-reviews by the PR author). If a PR was reviewed via issue comments rather than formal GitHub Pull Request Review submissions, it is recorded once a review object exists.
+4. **Free Tier Hosting Sleep Cycle:**
+   - On free platforms (e.g., Render), instances spin down after 15 minutes of inactivity and take ~30 seconds to wake up on the first request.
 
-Four models (`backend/prisma/schema.prisma`): `User`, `Repo`, `PullRequest`, `Reviewer`.
+---
 
-- GitHub-provided ids are unique constraints (`github_id`, `github_repo_id`, `github_pr_id`), so upserts are idempotent.
-- Composite indexes lead with `repo_id`, then a date column (`opened_at`, `first_review_at`, `merged_at`, `closed_at`) — the shape you want for per-repo time-range queries like "average time to first review last month".
-- `@@unique([owner, name])` on `Repo` prevents duplicate connections.
+## 🚢 Deployment Guide
 
-Migrations live in `backend/prisma/migrations/` and are applied on deploy via `prisma migrate deploy` (in the Dockerfile `CMD`).
+RepoPulse is pre-configured with a multi-stage `Dockerfile` and `render.yaml` blueprint for zero-cost deployment using **Render** (free Web Service) and **Neon** (free serverless PostgreSQL).
 
-## Deploying: Render (hosting) + Neon (Postgres)
-
-Both have permanent free tiers with **no credit card required**. The app is a
-**single origin** — the Dockerfile builds the frontend and the backend serves it —
-so there is exactly **one public URL** (`https://<service-name>.onrender.com`),
-which is what we register with GitHub for OAuth callbacks and (later) webhooks.
-
-### 1. Neon — free Postgres
-
-1. Sign in at [neon.tech](https://neon.tech) with your GitHub account (Free plan, no card).
-2. **Create a project**: name `repopulse`, pick a region near you, accept the default database name (`neondb`) or call it `repopulse`.
-3. The project dashboard shows a **connection string**. Copy it — it looks like:
-   `postgresql://neondb_owner:xxxx@ep-...-....us-east-1.aws.neon.tech/neondb?sslmode=require`
-   (keep the `?sslmode=require` — Neon requires TLS and Prisma needs it in the URL).
-   This is your `DATABASE_URL`, valid for both production *and* local dev.
-
-> ⚠️ **Neon connection string:** use the *direct* endpoint from the dashboard (the default `ep-…aws.neon.tech` host), not the `-pooler` one. Prisma manages its own pool for a single service.
-
-> **Free-tier note:** Neon free projects pause after ~5 days of inactivity. If local dev later hangs on `prisma` errors, reopen your stale branch or start the project from the Neon dashboard first.
-
-### 2. Render — free Web Service
-
-1. Push this repo to GitHub (`abisha-ch/RepoPulse` is the existing name).
-2. Sign in at [render.com](https://render.com) with GitHub, and grant access to the repo.
-3. Dashboard → **New → Web Service** → connect the `RepoPulse` repo.
-4. Settings:
-   - **Name**: `repopulse` → your URL becomes `https://repopulse.onrender.com` (if taken, pick another — use whatever URL it gives you).
-   - **Environment**: **Docker** (Render builds `Dockerfile` from the repo root; `render.yaml` is included for the Blueprint route but manual setup is identical).
-   - **Region**: nearest to you.
-   - **Branch**: `main`.
-   - **Plan**: Free.
-5. Leave Build/Start Commands blank (they come from the Dockerfile).
-6. Under **Environment**, set the variables from the table below, then **Create Web Service**.
-
-> The `render.yaml` in the repo documents all of this. You can deploy via Dashboard → **New → Blueprint** instead, which reads it automatically.
-
-> ⚠️ **Free-tier spin-down:** Render free services sleep after 15 min of inactivity and take ~30–60 s to wake. Fine for testing OAuth/demo work; **not reliable for GitHub webhooks** (a hook that arrives while asleep waits too long and GitHub times out). When you wire real webhooks (Day 2+), either use a [cron/keep-alive job](https://render.com/docs/cronjobs) on a paid instance or upgrade to a Starter instance that stays awake. GitHub retries webhooks for a limited window, so missed deliveries are mostly *watched* by the retry loop if the service returns 503, but plan for keeping it awake.
-
-### 3. Environment variables (set in Render → Environment)
-
-| Variable | Value |
-| --- | --- |
-| `NODE_ENV` | `production` |
-| `PORT` | `3000` |
-| `DATABASE_URL` | Your Neon connection string from step 1 (with `?sslmode=require`) |
-| `GITHUB_CLIENT_ID` | OAuth App client ID (your GitHub App — see below) |
-| `GITHUB_CLIENT_SECRET` | OAuth App client secret |
-| `SESSION_SECRET` | Any long random hex. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `GITHUB_REDIRECT_URI` | `https://repopulse.onrender.com/auth/github/callback` (your actual URL — set after first deploy) |
-| `ENCRYPTION_KEY` | Optional: 64-hex-char key; derived from `SESSION_SECRET` if unset |
-
-### 4. Verify + wire OAuth
-
-1. After deploy, check `https://repopulse.onrender.com/health` → `{"ok":true}` and that the homepage loads.
-2. On your GitHub OAuth App (github.com → Settings → Developer settings):
-
-   | Field | Value |
-   | --- | --- |
-   | Homepage URL | `https://repopulse.onrender.com` |
-   | Authorization callback URL | `https://repopulse.onrender.com/auth/github/callback` |
-
-3. Make sure `GITHUB_REDIRECT_URI` in Render matches the callback URL exactly.
-4. Open the homepage in a **private window** and complete a real GitHub login → you should see “Logged in as {username}”.
-
-If the URL that Render assigned differs from `repopulse.onrender.com`, substitute it everywhere above.
-
-## Layout
-
-```
-backend/           Express + TypeScript API
-  prisma/          schema + SQL migrations
-  src/
-    auth/          OAuth routes, session (JWT), auth middleware
-    crypto/        AES-256-GCM token encryption
-    routes/        /me
-    app.ts         Express app (serves frontend/dist)
-    index.ts       entry point
-frontend/          Vite + React SPA (placeholder login UI)
-Dockerfile         multi-stage build for Render (Docker environment)
-render.yaml        Render Blueprint (or set it up manually in the dashboard)
-```
+See the [Deployment Section](docs/DEPLOYMENT.md) for detailed cloud configuration steps.

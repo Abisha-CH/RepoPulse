@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { githubAuthRouter } from './auth/oauth';
 import { meRouter } from './routes/me';
+import { reposRouter } from './routes/repos';
 
 export function createApp(): express.Express {
   const app = express();
@@ -18,6 +19,7 @@ export function createApp(): express.Express {
 
   app.use('/auth/github', githubAuthRouter);
   app.use(meRouter);
+  app.use(reposRouter);
 
   // Single origin: the backend serves the built React app so cookies and OAuth
   // callbacks share one host. The catch-all is a plain middleware (Express 5
@@ -28,7 +30,15 @@ export function createApp(): express.Express {
   if (fs.existsSync(frontendDist)) {
     app.use(express.static(frontendDist));
     app.use((req, res, next) => {
-      if (req.method !== 'GET' || req.path.startsWith('/auth') || req.path.startsWith('/api')) {
+      if (
+        req.method !== 'GET' ||
+        req.path.startsWith('/auth') ||
+        req.path.startsWith('/api') ||
+        req.path.startsWith('/repos') ||
+        req.path.startsWith('/user') ||
+        req.path.startsWith('/me') ||
+        req.path.startsWith('/health')
+      ) {
         next();
         return;
       }
