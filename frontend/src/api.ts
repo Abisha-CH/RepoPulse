@@ -226,3 +226,72 @@ export async function fetchRepoMetrics(repoId: string): Promise<RepoMetricsRespo
   }
   return (await res.json()) as RepoMetricsResponse;
 }
+
+// ── Public Leaderboard ─────────────────────────────────────────────────────
+
+export interface LeaderboardComponent {
+  label: string;
+  weightPct: number;
+  included: boolean;
+  raw: number | null;
+  formatted: string | null;
+  subScore: number | null;
+}
+
+export interface LeaderboardComponents {
+  timeToMerge: LeaderboardComponent;
+  staleRate: LeaderboardComponent;
+  busFactor: LeaderboardComponent;
+  ciFailureRate: LeaderboardComponent;
+}
+
+export interface LeaderboardEntry {
+  rank: number;
+  repo: { id: string; owner: string; name: string; fullName: string };
+  healthScore: number | null;
+  includedWeightPct: number;
+  components: LeaderboardComponents;
+  metrics: {
+    timeToMerge: {
+      averageHours: number | null;
+      formatted: string;
+      sampleSize: number;
+    };
+    stalePrs: {
+      staleCount: number;
+      openCount: number;
+      staleRatePct: number | null;
+    };
+    busFactor: {
+      risk: 'High' | 'Moderate' | 'Low' | 'Insufficient Data';
+      top2SharePercentage: number;
+    };
+    ciOverall: {
+      failureRatePct: number | null;
+      decidedCount: number;
+    };
+    summary: {
+      totalPrs: number;
+      openPrs: number;
+      mergedPrs: number;
+      closedPrs: number;
+    };
+  };
+}
+
+export interface PublicLeaderboardResponse {
+  totalRepos: number;
+  generatedAt: string;
+  leaderboard: LeaderboardEntry[];
+}
+
+/**
+ * Fetch the public leaderboard — no auth required.
+ */
+export async function fetchPublicLeaderboard(): Promise<PublicLeaderboardResponse> {
+  const res = await fetch('/public/leaderboard');
+  if (!res.ok) {
+    throw new Error(`Failed to fetch leaderboard (${res.status})`);
+  }
+  return (await res.json()) as PublicLeaderboardResponse;
+}

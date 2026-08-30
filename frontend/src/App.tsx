@@ -191,6 +191,9 @@ export default function App() {
           </svg>
           Login with GitHub
         </button>
+        <p className="login-footer">
+          or <a href="/leaderboard" className="login-link">view the public leaderboard</a> without logging in
+        </p>
       </div>
     );
   }
@@ -208,6 +211,11 @@ export default function App() {
           <span className="brand-name">RepoPulse</span>
           <span className="badge-tag">Day 2</span>
         </div>
+        <nav className="main-nav">
+          <a href="/leaderboard" className="nav-link" title="Public repo health leaderboard">
+            🏆 Leaderboard
+          </a>
+        </nav>
         <div className="user-profile">
           <div className="avatar">{initials}</div>
           <div className="user-details">

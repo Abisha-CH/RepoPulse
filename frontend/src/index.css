@@ -821,3 +821,323 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* ── Navigation & Login Footer ─────────────────────────────────────────── */
+
+.main-nav {
+  display: flex;
+  align-items: center;
+}
+
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-link:hover {
+  background: var(--tag-bg);
+  color: var(--fg);
+}
+
+.login-footer {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.login-link {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.login-link:hover {
+  opacity: 0.85;
+}
+
+/* ── Public Leaderboard Page ───────────────────────────────────────────── */
+
+.leaderboard-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.leaderboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.leaderboard-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.leaderboard-brand h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.back-link {
+  color: var(--blue);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: background 0.15s ease;
+}
+
+.back-link:hover {
+  background: var(--tag-bg);
+}
+
+.leaderboard-subtitle {
+  margin: 0 0 24px;
+  font-size: 15px;
+  color: var(--muted);
+  max-width: 700px;
+}
+
+.leaderboard-card {
+  margin-bottom: 24px;
+}
+
+/* ── Leaderboard Table ─────────────────────────────────────────────────── */
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.leaderboard-table th {
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.leaderboard-table td {
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--border-light);
+  vertical-align: top;
+}
+
+.leaderboard-table tr:hover {
+  background: var(--card-hover);
+}
+
+.col-rank { width: 52px; }
+.col-repo { min-width: 140px; }
+.col-health { min-width: 130px; }
+.col-prs { min-width: 100px; }
+
+.rank-cell {
+  text-align: center;
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.rank-top-1 { font-size: 18px; }
+.rank-top-2 { font-size: 17px; }
+.rank-top-3 { font-size: 17px; }
+
+.repo-cell { white-space: nowrap; }
+
+.repo-fullname {
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+}
+
+.prs-cell {
+  white-space: nowrap;
+}
+
+.row-no-data {
+  opacity: 0.65;
+}
+
+/* ── Health Score Cell ─────────────────────────────────────────────────── */
+
+.health-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 110px;
+}
+
+.score-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 36px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  letter-spacing: -0.02em;
+}
+
+.score-good {
+  background: rgba(63, 185, 80, 0.2);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+
+.score-fair {
+  background: rgba(210, 153, 34, 0.2);
+  color: var(--yellow);
+  border: 1px solid var(--yellow);
+}
+
+.score-poor {
+  background: rgba(248, 81, 73, 0.2);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+
+.score-null {
+  background: var(--tag-bg);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.score-band-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.score-bar {
+  background: var(--bg);
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.25s ease;
+}
+
+.score-bar-fill.score-good { background: var(--green); }
+.score-bar-fill.score-fair { background: var(--yellow); }
+.score-bar-fill.score-poor { background: var(--red); }
+
+/* ── Inline Risk & Metric Subtext ──────────────────────────────────────── */
+
+.muted-sm {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.risk-inline {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-top: 2px;
+  width: fit-content;
+  text-transform: uppercase;
+}
+
+.risk-inline.risk-high {
+  color: var(--red);
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.risk-inline.risk-moderate {
+  color: var(--yellow);
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.risk-inline.risk-low {
+  color: var(--green);
+  background: rgba(63, 185, 80, 0.15);
+}
+
+.risk-inline.risk-insufficient-data {
+  color: var(--muted);
+  background: var(--tag-bg);
+}
+
+/* ── Methodology Card ──────────────────────────────────────────────────── */
+
+.methodology-card h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.methodology-table-wrapper {
+  overflow-x: auto;
+}
+
+.methodology-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+.methodology-table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--border);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.methodology-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.method-label { font-weight: 600; }
+.method-weight {
+  font-weight: 700;
+  color: var(--blue);
+  white-space: nowrap;
+}
+.method-best { color: var(--green); }
+.method-worst { color: var(--red); }
+
+/* ── Leaderboard Footer ────────────────────────────────────────────────── */
+
+.leaderboard-footer {
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 16px;
+  padding-bottom: 32px;
+}

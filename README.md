@@ -53,6 +53,10 @@ Software engineering teams often struggle with invisible bottlenecks in their de
 
     ![CI Failure Rate by PR Size](screenshots/ci.png)
 
+- 🏆 **Public Repo Leaderboard:** A login-free page (`/leaderboard`) ranking every synchronized repository by an overall **health score (0–100)**, with color-coded scores and the underlying metrics shown for each repo. See the [Public Leaderboard](#-public-repo-leaderboard) section for the formula.
+
+    ![Public Leaderboard](screenshots/leaderboard.png)
+
 ---
 
 ## 🛠️ Tech Stack
@@ -144,7 +148,7 @@ npm run db:migrate -w backend
   ```bash
   npm run dev -w frontend
   ```
-  *(Note: The Vite dev server proxies all `/auth`, `/me`, `/repos`, and `/user` requests to `:3000` automatically).*
+  *(Note: The Vite dev server proxies all `/auth`, `/me`, `/repos`, `/user`, and `/public` requests to `:3000` automatically).*
 
 Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 
@@ -164,6 +168,32 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 | `POST` | `/repos` | Yes | Connects a repository (`{ owner, name }` or `{ repo: "owner/name" }`) |
 | `POST` | `/repos/:id/sync` | Yes | On-demand sync of PRs and reviews from GitHub REST API |
 | `GET` | `/repos/:id/metrics` | Yes | Returns computed engineering velocity & health metrics for a repository |
+| `GET` | `/public/leaderboard` | No | Public ranking of all synced repos by health score (repo-level aggregates only) |
+
+---
+
+## 🏆 Public Repo Leaderboard
+
+RepoPulse ships a **public, login-free leaderboard** at `/leaderboard` (linked from the dashboard header and the login screen). It aggregates every repository that has ever been synced by any user — not just your own — and ranks them by an overall engineering health score.
+
+The leaderboard is reachable without authentication and exposes **only aggregate, repo-level data** (name, health score, and per-metric sub-scores). It never exposes anything tied to an individual user account, such as connected-repo lists or synced PR metadata tied to a specific login.
+
+### Health Score Formula (0–100)
+
+Each repository gets a score between **0 (worst)** and **100 (healthiest)**. Every component is *"lower is better"* — each raw metric is normalized linearly onto a 0–100 sub-score between its "best" and "worst" anchors, then combined as a **weighted average**. The weights sum to 100 and the normalization anchors are defined as named constants in `backend/src/metrics/health.ts`, so the scoring is easy to retune in one place.
+
+| Component | Weight | Best (100 pts) | Worst (0 pts) | What it measures |
+| :--- | :---: | :---: | :---: | :--- |
+| **Time to Merge** | 30% | ≤ 8h | ≥ 168h (7 days) | Avg time from PR open to merge — slow merges stall delivery |
+| **Stale Open PRs** | 25% | 0% | ≥ 50% | Share of open PRs left idle for 7+ days |
+| **Bus Factor** | 20% | ≤ 40% | 100% | Top-2 author share of merged PRs (contribution concentration) |
+| **CI Failure Rate** | 25% | 0% | ≥ 40% | Overall PR check failure rate (Checks API) |
+
+**Missing-data handling:** When a repo has no data for a component (e.g., no merged PRs, or no CI configured), that component is *excluded* — its weight is dropped from both sides, and the remaining weights are renormalized automatically. A repo with no synced PR data at all gets `score: null` and appears below the scored repos, sorted by PR count.
+
+Refreshed **on demand** whenever a sync runs; the page shows the timestamp it was generated at.
+
+> 📸 **Screenshot reminder:** capture a screenshot of the `/leaderboard` page showing the ranked table with color-coded health scores, save it as `screenshots/leaderboard.png`, and use it in place of the reference at the top of this section.
 
 ---
 

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../auth/middleware';
 import { prisma } from '../db';
 import { decryptToken } from '../crypto/token';
+import { computeRepoMetrics, formatDuration } from '../metrics/health';
 import {
   fetchAllPullRequests,
   fetchPullRequestReviews,
@@ -15,22 +16,6 @@ import {
 } from '../github/client';
 
 export const reposRouter = Router();
-
-// Helper to format hour durations into clean human strings ("2.5 hrs", "3.1 days", "45 mins")
-function formatDuration(hours: number | null): string {
-  if (hours === null || isNaN(hours)) {
-    return 'N/A';
-  }
-  if (hours < 1) {
-    const mins = Math.max(1, Math.round(hours * 60));
-    return `${mins}m`;
-  }
-  if (hours < 48) {
-    return `${hours.toFixed(1)}h`;
-  }
-  const days = (hours / 24).toFixed(1);
-  return `${days}d`;
-}
 
 /**
  * GET /user/github-repos — list user's accessible GitHub repos for quick selection.
@@ -369,134 +354,9 @@ reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Res
     orderBy: { opened_at: 'desc' },
   });
 
-  const now = Date.now();
-  const STALE_DAYS = 7;
-  const staleThresholdMs = STALE_DAYS * 24 * 60 * 60 * 1000;
-
-  // 1. Time to First Review
-  const reviewedPrs = prs.filter((p) => p.first_review_at !== null);
-  const reviewDurationsHours = reviewedPrs.map(
-    (p) => Math.max(0, p.first_review_at!.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
-  );
-
-  const avgTimeToReviewHours =
-    reviewDurationsHours.length > 0
-      ? reviewDurationsHours.reduce((a, b) => a + b, 0) / reviewDurationsHours.length
-      : null;
-
-  // 2. Time to Merge
-  const mergedPrs = prs.filter((p) => p.merged_at !== null);
-  const mergeDurationsHours = mergedPrs.map(
-    (p) => Math.max(0, p.merged_at!.getTime() - p.opened_at.getTime()) / (1000 * 60 * 60)
-  );
-
-  const avgTimeToMergeHours =
-    mergeDurationsHours.length > 0
-      ? mergeDurationsHours.reduce((a, b) => a + b, 0) / mergeDurationsHours.length
-      : null;
-
-  // 3. Bus Factor & PR Author Concentration
-  const totalMerged = mergedPrs.length;
-  const authorCounts: Record<string, number> = {};
-  for (const p of mergedPrs) {
-    authorCounts[p.author] = (authorCounts[p.author] || 0) + 1;
-  }
-
-  const authorRankings = Object.entries(authorCounts)
-    .map(([author, count]) => ({
-      author,
-      count,
-      percentage: totalMerged > 0 ? Math.round((count / totalMerged) * 100) : 0,
-    }))
-    .sort((a, b) => b.count - a.count);
-
-  const top1Share = authorRankings[0]?.percentage ?? 0;
-  const top2Count = authorRankings.slice(0, 2).reduce((sum, a) => sum + a.count, 0);
-  const top2Share = totalMerged > 0 ? Math.round((top2Count / totalMerged) * 100) : 0;
-
-  let busFactorRisk: 'High' | 'Moderate' | 'Low' | 'Insufficient Data';
-  let busFactorScoreDescription: string;
-
-  if (totalMerged === 0) {
-    busFactorRisk = 'Insufficient Data';
-    busFactorScoreDescription = 'No merged pull requests available yet to compute concentration.';
-  } else if (top1Share >= 70 || (totalMerged >= 3 && top2Share >= 85)) {
-    busFactorRisk = 'High';
-    busFactorScoreDescription = `High knowledge concentration: ${top1Share}% of merged PRs authored by top contributor (${authorRankings[0]?.author}).`;
-  } else if (top1Share >= 50 || top2Share >= 70) {
-    busFactorRisk = 'Moderate';
-    busFactorScoreDescription = `Moderate concentration: top 2 contributors author ${top2Share}% of merged PRs.`;
-  } else {
-    busFactorRisk = 'Low';
-    busFactorScoreDescription = `Healthy contribution distribution across ${authorRankings.length} authors.`;
-  }
-
-  // 4. Stale PRs
-  const openPrs = prs.filter((p) => p.state === 'open');
-  const stalePrs = openPrs.filter((p) => now - p.opened_at.getTime() > staleThresholdMs);
-
-  const stalePrDetails = stalePrs.map((p) => ({
-    githubPrId: p.github_pr_id,
-    title: p.title,
-    author: p.author,
-    daysOpen: Math.floor((now - p.opened_at.getTime()) / (24 * 60 * 60 * 1000)),
-    openedAt: p.opened_at.toISOString(),
-  }));
-
-  // 5. CI failure rate by PR size
-  // Bucket thresholds (total lines changed = additions + deletions).
-  const SIZE_BUCKETS = [
-    { key: 'small', label: 'Small', sizeRange: '< 100 lines' },
-    { key: 'medium', label: 'Medium', sizeRange: '100 – 499 lines' },
-    { key: 'large', label: 'Large', sizeRange: '≥ 500 lines' },
-  ] as const;
-
-  const sizeBucketKey = (lines: number): (typeof SIZE_BUCKETS)[number]['key'] => {
-    if (lines < 100) return 'small';
-    if (lines < 500) return 'medium';
-    return 'large';
-  };
-
-  const bucketAcc = new Map<string, { prCount: number; pass: number; fail: number; unknown: number }>();
-  let hasCiData = false;
-  for (const p of prs) {
-    const lines = p.additions + p.deletions;
-    const key = sizeBucketKey(lines);
-    const bucket = bucketAcc.get(key) ?? { prCount: 0, pass: 0, fail: 0, unknown: 0 };
-    bucket.prCount += 1;
-    if (p.ci_status === 'failure') {
-      bucket.fail += 1;
-      hasCiData = true;
-    } else if (p.ci_status === 'success') {
-      bucket.pass += 1;
-      hasCiData = true;
-    } else {
-      bucket.unknown += 1;
-    }
-    bucketAcc.set(key, bucket);
-  }
-
-  const ciByPrSize = {
-    hasCiData,
-    buckets: SIZE_BUCKETS.map((s) => {
-      const b = bucketAcc.get(s.key);
-      const prCount = b?.prCount ?? 0;
-      const ciFailureCount = b?.fail ?? 0;
-      const ciPassCount = b?.pass ?? 0;
-      const ciUnknownCount = b?.unknown ?? 0;
-      const decided = ciFailureCount + ciPassCount;
-      return {
-        key: s.key,
-        label: s.label,
-        sizeRange: s.sizeRange,
-        prCount,
-        ciFailureCount,
-        ciPassCount,
-        ciUnknownCount,
-        failureRate: decided > 0 ? Number(((ciFailureCount / decided) * 100).toFixed(1)) : null,
-      };
-    }),
-  };
+  // Usage note: metric computation lives in src/metrics/health.ts so the same
+  // numbers power both this authed per-repo route and the public leaderboard.
+  const metrics = computeRepoMetrics(prs);
 
   // 6. Recent PRs for tabular view
   const recentPrs = prs.slice(0, 30).map((p) => {
@@ -531,40 +391,7 @@ reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Res
       name: repo.name,
       fullName: `${repo.owner}/${repo.name}`,
     },
-    metrics: {
-      timeToFirstReview: {
-        averageHours: avgTimeToReviewHours !== null ? Number(avgTimeToReviewHours.toFixed(1)) : null,
-        formatted: formatDuration(avgTimeToReviewHours),
-        sampleSize: reviewedPrs.length,
-      },
-      timeToMerge: {
-        averageHours: avgTimeToMergeHours !== null ? Number(avgTimeToMergeHours.toFixed(1)) : null,
-        formatted: formatDuration(avgTimeToMergeHours),
-        sampleSize: mergedPrs.length,
-      },
-      busFactor: {
-        risk: busFactorRisk,
-        description: busFactorScoreDescription,
-        top1SharePercentage: top1Share,
-        top2SharePercentage: top2Share,
-        topContributors: authorRankings.slice(0, 5),
-        methodologyTradeoff:
-          'Approximated via PR author concentration (% of merged PRs authored by top contributors). Note: This reflects key contributor dependency at the PR level without requiring full git line-level blame analysis.',
-      },
-      stalePrs: {
-        staleCount: stalePrs.length,
-        openCount: openPrs.length,
-        staleThresholdDays: STALE_DAYS,
-        stalePrs: stalePrDetails,
-      },
-      ciByPrSize,
-      summary: {
-        totalPrs: prs.length,
-        openPrs: openPrs.length,
-        mergedPrs: mergedPrs.length,
-        closedPrs: prs.filter((p) => p.state === 'closed').length,
-      },
-    },
+    metrics,
     recentPullRequests: recentPrs,
   });
 });

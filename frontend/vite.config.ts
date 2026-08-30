@@ -14,6 +14,7 @@ export default defineConfig({
       '/health': 'http://localhost:3000',
       '/repos': 'http://localhost:3000',
       '/user': 'http://localhost:3000',
+      '/public': 'http://localhost:3000',
     },
   },
   build: {
