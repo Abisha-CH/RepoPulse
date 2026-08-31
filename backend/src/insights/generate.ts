@@ -4,7 +4,7 @@ import type { RepoMetrics } from '../metrics/health';
 // ─────────────────────────────────────────────────────────────────────────────
 // AI Insights — Gemini integration
 //
-// Sends the repo's computed RepoMetrics to Gemini 2.5 Flash and returns
+// Sends the repo's computed RepoMetrics to Gemini 3.6 Flash and returns
 // structured, evidence-backed observations. Results are cached in the
 // database (see routes/insights.ts) so Gemini is not called on every
 // dashboard load.
@@ -76,11 +76,15 @@ function buildUserPrompt(metrics: RepoMetrics): string {
     },
     ci: {
       hasCiData: metrics.ciByPrSize.hasCiData,
-      overallCiFailureRate: metrics.overallCiFailureRate,
+      // All CI rates below are PERCENTAGES on a 0–100 scale, NOT decimals.
+      // 0.6 means 0.6% (1 failure out of ~167 decided PRs), NOT 60%.
+      overallCiFailureRatePct: metrics.overallCiFailureRate,
       failureRateBySize: metrics.ciByPrSize.buckets.map((b) => ({
         label: b.label,
         prCount: b.prCount,
-        failureRate: b.failureRate,
+        ciFailureCount: b.ciFailureCount,
+        ciPassCount: b.ciPassCount,
+        failureRatePct: b.failureRate, // 0–100 percentage, NOT 0–1 fraction
       })),
     },
   };
@@ -92,6 +96,14 @@ Each observation must have:
 - evidence: the specific metric/value supporting the finding
 - recommendation: one concrete actionable suggestion
 - severity: one of "high", "medium", "low", "positive"
+
+IMPORTANT UNITS:
+- Time fields (averageHours) are in hours.
+- "failureRatePct" and "overallCiFailureRatePct" are PERCENTAGES on a 0–100 scale.
+  Example: a value of 0.6 means 0.6% (1 failure out of ~167 PRs), NOT 60%.
+  A value of 41.4 means 41.4% (e.g. 12 failures out of 29 PRs).
+- "top1SharePercentage" and "top2SharePercentage" are also on a 0–100 scale.
+- "staleCount" and "openCount" are raw integer counts.
 
 Metrics:
 ${JSON.stringify(snapshot, null, 2)}`;
@@ -120,7 +132,7 @@ async function callGemini(prompt: string): Promise<string> {
     throw new InsightsError('GEMINI_API_KEY is not configured. Set it in backend/.env to enable AI insights.', 'CONFIG_MISSING');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`;
 
   const body = {
     contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\n${prompt}` }] }],
