@@ -216,6 +216,22 @@ export async function syncRepo(repoId: string): Promise<{ success: boolean; coun
 }
 
 /**
+ * Send the repo's current metrics as a digest to the configured Slack channel.
+ */
+export async function sendDigest(repoId: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`/repos/${encodeURIComponent(repoId)}/send-digest`, {
+    method: 'POST',
+  });
+
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? `Failed to send digest to Slack (${res.status})`);
+  }
+
+  return (await res.json()) as { success: boolean; message: string };
+}
+
+/**
  * Fetch computed health metrics for a repository.
  */
 export async function fetchRepoMetrics(repoId: string): Promise<RepoMetricsResponse> {

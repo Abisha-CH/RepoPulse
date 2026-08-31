@@ -3,6 +3,7 @@ import { requireAuth } from '../auth/middleware';
 import { prisma } from '../db';
 import { decryptToken } from '../crypto/token';
 import { computeRepoMetrics, formatDuration } from '../metrics/health';
+import { buildDigestSlackPayload, sendDigestToSlack } from '../slack/digest';
 import {
   fetchAllPullRequests,
   fetchPullRequestReviews,
@@ -414,6 +415,61 @@ reposRouter.get('/repos/:id/metrics', requireAuth, async (req: Request, res: Res
     metrics,
     recentPullRequests: recentPrs,
   });
+});
+
+/**
+ * POST /repos/:id/send-digest — format the repo's current metrics into a
+ * Slack message and post it to the configured webhook channel.
+ *
+ * Metrics are computed with the same computeRepoMetrics() used by
+ * GET /repos/:id/metrics, so the digest always reflects the dashboard numbers.
+ */
+reposRouter.post('/repos/:id/send-digest', requireAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const repo = await prisma.repo.findFirst({
+    where: { id, connected_by_user_id: req.userId },
+  });
+
+  if (!repo) {
+    res.status(404).json({ error: 'Repository not found or not connected.' });
+    return;
+  }
+
+  const webhookUrl = process.env.SLACK_WEBHOOK_URL?.trim();
+  if (!webhookUrl) {
+    res.status(500).json({
+      error: 'SLACK_WEBHOOK_URL is not configured. Set it in backend/.env to use the Slack digest.',
+    });
+    return;
+  }
+
+  try {
+    const prs = await prisma.pullRequest.findMany({
+      where: { repo_id: repo.id },
+      include: { reviewers: true },
+      orderBy: { opened_at: 'desc' },
+    });
+
+    const metrics = computeRepoMetrics(prs);
+    const payload = buildDigestSlackPayload(`${repo.owner}/${repo.name}`, metrics);
+
+    await sendDigestToSlack(payload);
+
+    res.json({
+      success: true,
+      message: `Sent weekly digest for ${repo.owner}/${repo.name} to Slack.`,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('SLACK_WEBHOOK_URL')) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    if (err instanceof Error && err.message.startsWith('Slack webhook responded')) {
+      res.status(502).json({ error: err.message });
+      return;
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 function handleApiError(res: Response, err: unknown): void {

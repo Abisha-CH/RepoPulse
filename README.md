@@ -121,6 +121,7 @@ Set the required environment variables:
 | `SESSION_SECRET` | ✅ | Random key for signing session JWTs | `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
 | `GITHUB_REDIRECT_URI` | ⬜ | OAuth callback URL | `http://localhost:3000/auth/github/callback` (or your ngrok / prod URL) |
 | `ENCRYPTION_KEY` | ⬜ | 32-byte (64 hex chars) key for AES-256 token encryption | Derived from `SESSION_SECRET` if omitted |
+| `SLACK_WEBHOOK_URL` | ⬜ | Incoming Webhook URL that powers the "Send Digest to Slack" button. Create one at [Slack → App → Incoming Webhooks](https://api.slack.com/messaging/webhooks). Leave blank to disable the feature. | `https://hooks.slack.com/services/T000/B000/XXXX` |
 | `PORT` | ⬜ | Backend server listen port | `3000` |
 | `NODE_ENV` | ⬜ | Runtime environment | `development` (or `production`) |
 
@@ -168,7 +169,25 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 | `POST` | `/repos` | Yes | Connects a repository (`{ owner, name }` or `{ repo: "owner/name" }`) |
 | `POST` | `/repos/:id/sync` | Yes | On-demand sync of PRs and reviews from GitHub REST API |
 | `GET` | `/repos/:id/metrics` | Yes | Returns computed engineering velocity & health metrics for a repository |
+| `POST` | `/repos/:id/send-digest` | Yes | Formats the repo's current metrics as a Slack message and posts it to `SLACK_WEBHOOK_URL` |
 | `GET` | `/public/leaderboard` | No | Public ranking of all synced repos by health score (repo-level aggregates only) |
+
+---
+
+## 📬 Slack Digest
+
+Push a selected repository's current engineering-health metrics straight to your team's Slack channel with one click. The **"Send Digest to Slack"** button on the dashboard prompts the backend to reuse the exact same `computeRepoMetrics()` numbers shown on the screen, format them into a clean **Slack Block Kit** message (header, summary line, and per-metric sections), and post them to your configured Incoming Webhook.
+
+![Weekly Digest in Slack](screenshots/slack-digest.png)
+
+**To enable it:**
+1. Create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) for your channel.
+2. Add its URL as `SLACK_WEBHOOK_URL` in `backend/.env` (see the setup table above).
+3. Open the dashboard → select a repository → click **Send Digest to Slack**.
+
+If `SLACK_WEBHOOK_URL` is not set, the button returns a clear configuration error instead of silently failing. The digest reflects a repo's **current** metrics — run **Sync Now** first to refresh from GitHub before sending.
+
+> **⏰ Scheduled digests are planned.** Today the digest is manual-only because the app does not yet run on an always-on deployment. A future milestone will drive the same digest function with a scheduler (e.g. `node-cron`) to post a weekly digest automatically — see the scheduling note in `backend/src/slack/digest.ts`.
 
 ---
 

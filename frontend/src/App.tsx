@@ -6,6 +6,7 @@ import {
   connectRepo,
   syncRepo,
   fetchRepoMetrics,
+  sendDigest,
   logoutUser,
   type MeResponse,
   type ConnectedRepo,
@@ -28,6 +29,7 @@ export default function App() {
   // UI state
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSendingDigest, setIsSendingDigest] = useState(false);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const [showConnectForm, setShowConnectForm] = useState(false);
   const [repoInput, setRepoInput] = useState('');
@@ -162,6 +164,25 @@ export default function App() {
     }
   };
 
+  const handleSendDigest = async () => {
+    if (!selectedRepoId) return;
+
+    setIsSendingDigest(true);
+    setErrorMessage(null);
+    setStatusMessage('Sending digest to Slack…');
+
+    try {
+      const res = await sendDigest(selectedRepoId);
+      setStatusMessage(res.message);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(`Failed to send digest: ${msg}`);
+      setStatusMessage(null);
+    } finally {
+      setIsSendingDigest(false);
+    }
+  };
+
   if (authState.status === 'loading') {
     return (
       <div className="card loading-card">
@@ -285,6 +306,28 @@ export default function App() {
                         <path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .655-.835zm12.59-1.01a.75.75 0 0 1-.834-.656 5.5 5.5 0 0 0-9.592-2.97l1.204 1.204a.25.25 0 0 1-.177.427H1.25a.25.25 0 0 1-.25-.25V1.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-.655.835z" />
                       </svg>
                       Sync Now
+                    </>
+                  )}
+                </button>
+              )}
+
+              {selectedRepo && (
+                <button
+                  type="button"
+                  className="btn-secondary digest-btn"
+                  onClick={handleSendDigest}
+                  disabled={isSendingDigest}
+                  title="Post this repo's current metrics to the configured Slack channel"
+                >
+                  {isSendingDigest ? (
+                    <>
+                      <span className="btn-spinner" />
+                      Sending…
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ marginRight: 6 }}>📤</span>
+                      Send Digest to Slack
                     </>
                   )}
                 </button>
