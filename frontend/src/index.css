@@ -172,7 +172,8 @@ body {
   color: var(--muted);
 }
 
-.select-input, .text-input {
+.select-input,
+.text-input {
   background: var(--bg);
   color: var(--fg);
   border: 1px solid var(--border);
@@ -188,7 +189,8 @@ body {
   cursor: pointer;
 }
 
-.select-input:focus, .text-input:focus {
+.select-input:focus,
+.text-input:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 2px rgba(47, 129, 247, 0.2);
 }
@@ -480,7 +482,8 @@ body {
 }
 
 /* Breakdown Card */
-.breakdown-card h3, .table-card h3 {
+.breakdown-card h3,
+.table-card h3 {
   margin: 0 0 10px;
   font-size: 16px;
   font-weight: 600;
@@ -785,7 +788,9 @@ body {
   gap: 8px;
 }
 
-.loading-card, .loading-metrics, .empty-dashboard {
+.loading-card,
+.loading-metrics,
+.empty-dashboard {
   text-align: center;
   padding: 48px 24px;
 }
@@ -947,10 +952,21 @@ body {
   background: var(--card-hover);
 }
 
-.col-rank { width: 52px; }
-.col-repo { min-width: 140px; }
-.col-health { min-width: 130px; }
-.col-prs { min-width: 100px; }
+.col-rank {
+  width: 52px;
+}
+
+.col-repo {
+  min-width: 140px;
+}
+
+.col-health {
+  min-width: 130px;
+}
+
+.col-prs {
+  min-width: 100px;
+}
 
 .rank-cell {
   text-align: center;
@@ -959,11 +975,21 @@ body {
   white-space: nowrap;
 }
 
-.rank-top-1 { font-size: 18px; }
-.rank-top-2 { font-size: 17px; }
-.rank-top-3 { font-size: 17px; }
+.rank-top-1 {
+  font-size: 18px;
+}
 
-.repo-cell { white-space: nowrap; }
+.rank-top-2 {
+  font-size: 17px;
+}
+
+.rank-top-3 {
+  font-size: 17px;
+}
+
+.repo-cell {
+  white-space: nowrap;
+}
 
 .repo-fullname {
   font-weight: 600;
@@ -1045,9 +1071,17 @@ body {
   transition: width 0.25s ease;
 }
 
-.score-bar-fill.score-good { background: var(--green); }
-.score-bar-fill.score-fair { background: var(--yellow); }
-.score-bar-fill.score-poor { background: var(--red); }
+.score-bar-fill.score-good {
+  background: var(--green);
+}
+
+.score-bar-fill.score-fair {
+  background: var(--yellow);
+}
+
+.score-bar-fill.score-poor {
+  background: var(--red);
+}
 
 /* ── Inline Risk & Metric Subtext ──────────────────────────────────────── */
 
@@ -1123,14 +1157,23 @@ body {
   border-bottom: 1px solid var(--border-light);
 }
 
-.method-label { font-weight: 600; }
+.method-label {
+  font-weight: 600;
+}
+
 .method-weight {
   font-weight: 700;
   color: var(--blue);
   white-space: nowrap;
 }
-.method-best { color: var(--green); }
-.method-worst { color: var(--red); }
+
+.method-best {
+  color: var(--green);
+}
+
+.method-worst {
+  color: var(--red);
+}
 
 /* ── Leaderboard Footer ────────────────────────────────────────────────── */
 
@@ -1236,10 +1279,21 @@ body {
   border-left: 3px solid var(--border);
 }
 
-.insight-row.severity-high    { border-left-color: var(--red); }
-.insight-row.severity-medium  { border-left-color: var(--yellow); }
-.insight-row.severity-low     { border-left-color: var(--blue); }
-.insight-row.severity-positive { border-left-color: var(--green); }
+.insight-row.severity-high {
+  border-left-color: var(--red);
+}
+
+.insight-row.severity-medium {
+  border-left-color: var(--yellow);
+}
+
+.insight-row.severity-low {
+  border-left-color: var(--blue);
+}
+
+.insight-row.severity-positive {
+  border-left-color: var(--green);
+}
 
 .insight-head {
   display: flex;
@@ -1259,10 +1313,25 @@ body {
   flex-shrink: 0;
 }
 
-.severity-badge.severity-high    { background: rgba(248, 81, 73, 0.15); color: var(--red); }
-.severity-badge.severity-medium  { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
-.severity-badge.severity-low     { background: rgba(47, 129, 247, 0.15); color: var(--blue); }
-.severity-badge.severity-positive { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+.severity-badge.severity-high {
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--red);
+}
+
+.severity-badge.severity-medium {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--yellow);
+}
+
+.severity-badge.severity-low {
+  background: rgba(47, 129, 247, 0.15);
+  color: var(--blue);
+}
+
+.severity-badge.severity-positive {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--green);
+}
 
 .insight-finding {
   font-weight: 600;
@@ -1452,9 +1521,17 @@ body {
   transition: width 0.4s ease;
 }
 
-.score-bar-fill.score-green { background: var(--green); }
-.score-bar-fill.score-amber { background: var(--yellow); }
-.score-bar-fill.score-red { background: var(--red); }
+.score-bar-fill.score-green {
+  background: var(--green);
+}
+
+.score-bar-fill.score-amber {
+  background: var(--yellow);
+}
+
+.score-bar-fill.score-red {
+  background: var(--red);
+}
 
 .category-raw {
   font-size: 12px;
@@ -1493,34 +1570,103 @@ body {
   opacity: 0.5;
 }
 
-/* Print Styles */
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Print Styles — Health Report PDF Export
+   ═══════════════════════════════════════════════════════════════════════════════ */
 @media print {
-  body * {
-    visibility: hidden;
+  @page {
+    margin: 15mm;
+    size: A4;
   }
 
+  /*
+    The dashboard root is <div class="dashboard-container"> containing a
+    <header class="dashboard-header"> and a <main class="dashboard-main">.
+    The .health-report-overlay is a DIRECT CHILD of .dashboard-main.
+
+    Hide every dashboard element from the document flow EXCEPT the report
+    overlay: drop the header, and within <main>, drop every card/section that
+    is not the report overlay. Using `display: none` (not `visibility:
+    hidden`) keeps them from participating in pagination at all.
+  */
+  .dashboard-container > .dashboard-header,
+  .dashboard-main > *:not(.health-report-overlay) {
+    display: none !important;
+  }
+
+  /* The overlay and its ancestors must remain in the flow so the report shows */
+
+  /* Strip the overlay and dashboard container chrome so the report fills the page */
+  .dashboard-container,
+  .dashboard-main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Strip the overlay chrome so the report fills the page */
   .health-report-overlay {
-    position: static;
-    background: none;
-    backdrop-filter: none;
-    padding: 0;
-    overflow: visible;
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    border: none !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 
   .health-report {
-    box-shadow: none;
-    border: none;
-    border-radius: 0;
-    max-width: 100%;
-    padding: 20px;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    page-break-inside: auto;
   }
 
-  .health-report,
-  .health-report * {
-    visibility: visible;
-  }
-
+  /* Hide interactive action buttons */
   .report-actions-top {
-    display: none;
+    display: none !important;
+  }
+
+  /* Force background colors and gradients to print */
+  .overall-score-circle,
+  .score-bar-fill,
+  .score-bar-track,
+  .insight-row,
+  .category-card,
+  .severity-badge {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Keep sections together where practical */
+  .report-overall-score {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .category-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .report-insights {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .report-summary {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .report-section-title {
+    page-break-after: avoid;
+    break-after: avoid;
   }
 }
