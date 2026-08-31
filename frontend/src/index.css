@@ -1289,3 +1289,238 @@ body {
   text-align: right;
   margin-top: 4px;
 }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   Health Report Overlay
+   ════════════════════════════════════════════════════════════════════════════ */
+
+.health-report-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 20px;
+  overflow-y: auto;
+}
+
+.health-report {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-width: 820px;
+  width: 100%;
+  padding: 32px;
+  position: relative;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+}
+
+.report-actions-top {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.report-loading,
+.report-error {
+  text-align: center;
+  padding: 48px 0;
+}
+
+.report-error p {
+  color: var(--red);
+  margin-bottom: 12px;
+}
+
+/* Report Header */
+.report-header {
+  text-align: center;
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.report-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--fg);
+}
+
+.report-repo-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--blue);
+  margin-bottom: 4px;
+}
+
+.report-timestamp {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Overall Score Circle */
+.overall-score-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+.overall-score-circle {
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.overall-score-inner {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.overall-score-number {
+  font-size: 36px;
+  font-weight: 800;
+  color: var(--fg);
+  line-height: 1;
+}
+
+.overall-score-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Category Grid */
+.category-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.category-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.category-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.category-score {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--fg);
+}
+
+.score-bar-track {
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.score-bar-fill.score-green { background: var(--green); }
+.score-bar-fill.score-amber { background: var(--yellow); }
+.score-bar-fill.score-red { background: var(--red); }
+
+.category-raw {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.category-desc {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Report Insights Section */
+.report-insights {
+  margin-bottom: 24px;
+}
+
+.report-insights h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+  margin: 0 0 12px;
+}
+
+/* Report Summary */
+.report-summary {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.summary-sep {
+  margin: 0 8px;
+  opacity: 0.5;
+}
+
+/* Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .health-report-overlay {
+    position: static;
+    background: none;
+    backdrop-filter: none;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .health-report {
+    box-shadow: none;
+    border: none;
+    border-radius: 0;
+    max-width: 100%;
+    padding: 20px;
+  }
+
+  .health-report,
+  .health-report * {
+    visibility: visible;
+  }
+
+  .report-actions-top {
+    display: none;
+  }
+}

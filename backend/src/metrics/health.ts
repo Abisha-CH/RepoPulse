@@ -85,7 +85,7 @@ export interface HealthScoreResult {
 }
 
 /** Linear "lower is better" normalization between the best/worst anchors, clamped to 0–100. */
-function scoreLowerIsBetter(raw: number, best: number, worst: number): number {
+export function scoreLowerIsBetter(raw: number, best: number, worst: number): number {
   if (!isFinite(raw)) {
     return 0;
   }

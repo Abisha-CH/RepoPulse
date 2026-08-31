@@ -286,6 +286,41 @@ export async function regenerateInsights(repoId: string): Promise<InsightsRespon
   return (await res.json()) as InsightsResponse;
 }
 
+// ── Health Report ──────────────────────────────────────────────────────────
+
+export interface HealthReportCategory {
+  label: string;
+  score: number | null;
+  raw: string | null;
+  description: string;
+}
+
+export interface HealthReportResponse {
+  repo: { id: string; owner: string; name: string; fullName: string };
+  generatedAt: string;
+  overallScore: { score: number | null; includedWeightPct: number };
+  categories: {
+    deliveryVelocity: HealthReportCategory;
+    reviewProcess: HealthReportCategory;
+    knowledgeDistribution: HealthReportCategory;
+    ciReliability: HealthReportCategory;
+  };
+  insights: { observations: InsightObservation[]; generatedAt: string } | null;
+  summary: { totalPrs: number; openPrs: number; mergedPrs: number; closedPrs: number };
+}
+
+/**
+ * Fetch the assembled engineering health report for a repo.
+ */
+export async function fetchHealthReport(repoId: string): Promise<HealthReportResponse> {
+  const res = await fetch(`/repos/${encodeURIComponent(repoId)}/health-report`);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error ?? `Failed to fetch health report (${res.status})`);
+  }
+  return (await res.json()) as HealthReportResponse;
+}
+
 // ── Public Leaderboard ─────────────────────────────────────────────────────
 
 export interface LeaderboardComponent {

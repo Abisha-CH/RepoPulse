@@ -8,6 +8,7 @@ import {
   fetchRepoMetrics,
   fetchInsights,
   regenerateInsights,
+  fetchHealthReport,
   sendDigest,
   logoutUser,
   type MeResponse,
@@ -15,6 +16,7 @@ import {
   type GitHubRepoOption,
   type RepoMetricsResponse,
   type InsightsResponse,
+  type HealthReportResponse,
 } from './api';
 
 type AuthState =
@@ -43,6 +45,10 @@ export default function App() {
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
   const [isRegeneratingInsights, setIsRegeneratingInsights] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [healthReportData, setHealthReportData] = useState<HealthReportResponse | null>(null);
+  const [isLoadingReport, setIsLoadingReport] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [showReport, setShowReport] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -140,11 +146,15 @@ export default function App() {
   useEffect(() => {
     if (selectedRepoId) {
       setInsightsData(null); // clear old repo's insights immediately
+      setShowReport(false); // close report view
+      setHealthReportData(null);
       void loadMetrics(selectedRepoId);
       void loadInsights(selectedRepoId);
     } else {
       setMetricsData(null);
       setInsightsData(null);
+      setShowReport(false);
+      setHealthReportData(null);
     }
   }, [selectedRepoId, loadMetrics, loadInsights]);
 
@@ -160,6 +170,23 @@ export default function App() {
       setInsightsError(msg);
     } finally {
       setIsRegeneratingInsights(false);
+    }
+  };
+
+  const handleGenerateReport = async () => {
+    if (!selectedRepoId) return;
+    setIsLoadingReport(true);
+    setReportError(null);
+    setShowReport(true);
+    try {
+      const data = await fetchHealthReport(selectedRepoId);
+      setHealthReportData(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setReportError(msg);
+      setHealthReportData(null);
+    } finally {
+      setIsLoadingReport(false);
     }
   };
 
@@ -378,6 +405,28 @@ export default function App() {
                   )}
                 </button>
               )}
+
+              {selectedRepo && (
+                <button
+                  type="button"
+                  className="btn-secondary report-btn"
+                  onClick={handleGenerateReport}
+                  disabled={isLoadingReport}
+                  title="Generate a shareable engineering health report"
+                >
+                  {isLoadingReport ? (
+                    <>
+                      <span className="btn-spinner" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ marginRight: 6 }}>📋</span>
+                      Health Report
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
@@ -581,6 +630,138 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* ─── Health Report Overlay ─────────────────────────────────────────── */}
+            {showReport && (
+              <div className="health-report-overlay" onClick={() => setShowReport(false)}>
+                <div className="health-report" onClick={(e) => e.stopPropagation()}>
+                  <div className="report-actions-top">
+                    <button type="button" className="btn-ghost" onClick={() => window.print()} title="Print or save as PDF">
+                      🖨️ Print / Export PDF
+                    </button>
+                    <button type="button" className="btn-ghost" onClick={() => setShowReport(false)} title="Close report">
+                      ✕ Close
+                    </button>
+                  </div>
+
+                  {isLoadingReport && (
+                    <div className="report-loading">
+                      <div className="spinner" />
+                      <p>Generating health report…</p>
+                    </div>
+                  )}
+
+                  {!isLoadingReport && reportError && (
+                    <div className="report-error">
+                      <p>⚠️ {reportError}</p>
+                      <button type="button" className="btn-primary" onClick={handleGenerateReport}>
+                        Retry
+                      </button>
+                    </div>
+                  )}
+
+                  {!isLoadingReport && healthReportData && (
+                    <>
+                      {/* Report Header */}
+                      <div className="report-header">
+                        <h2>Engineering Health Report</h2>
+                        <div className="report-repo-name">{healthReportData.repo.fullName}</div>
+                        <div className="report-timestamp">
+                          Generated {new Date(healthReportData.generatedAt).toLocaleString()}
+                        </div>
+                      </div>
+
+                      {/* Overall Score Circle */}
+                      <div className="overall-score-section">
+                        <div
+                          className="overall-score-circle"
+                          style={{
+                            background: healthReportData.overallScore.score !== null
+                              ? `conic-gradient(var(--green) ${healthReportData.overallScore.score * 3.6}deg, var(--border) 0deg)`
+                              : 'var(--border)',
+                          }}
+                        >
+                          <div className="overall-score-inner">
+                            <span className="overall-score-number">
+                              {healthReportData.overallScore.score !== null
+                                ? healthReportData.overallScore.score
+                                : '—'}
+                            </span>
+                            <span className="overall-score-label">Overall Health</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Category Breakdown */}
+                      <div className="category-grid">
+                        {Object.entries(healthReportData.categories).map(([key, cat]) => (
+                          <div key={key} className="category-card">
+                            <div className="category-header">
+                              <span className="category-label">{cat.label}</span>
+                              <span className="category-score">{cat.score !== null ? cat.score : '—'}</span>
+                            </div>
+                            <div className="score-bar-track">
+                              <div
+                                className={`score-bar-fill ${
+                                  cat.score !== null
+                                    ? cat.score >= 70
+                                      ? 'score-green'
+                                      : cat.score >= 40
+                                        ? 'score-amber'
+                                        : 'score-red'
+                                    : ''
+                                }`}
+                                style={{ width: cat.score !== null ? `${cat.score}%` : '0%' }}
+                              />
+                            </div>
+                            {cat.raw && <div className="category-raw">{cat.raw}</div>}
+                            <div className="category-desc">{cat.description}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* AI Insights / Top Risks */}
+                      {healthReportData.insights && healthReportData.insights.observations.length > 0 && (
+                        <div className="report-insights">
+                          <h3>Top Risks & Recommendations</h3>
+                          <div className="insights-list">
+                            {healthReportData.insights.observations.map((obs, idx) => (
+                              <div key={idx} className={`insight-row severity-${obs.severity}`}>
+                                <div className="insight-head">
+                                  <span className={`severity-badge severity-${obs.severity}`}>
+                                    {obs.severity}
+                                  </span>
+                                  <span className="insight-finding">{obs.finding}</span>
+                                </div>
+                                <div className="insight-body">
+                                  <div className="insight-field">
+                                    <span className="field-label">Evidence:</span> {obs.evidence}
+                                  </div>
+                                  <div className="insight-field">
+                                    <span className="field-label">Recommendation:</span> {obs.recommendation}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Summary */}
+                      <div className="report-summary">
+                        <span>{healthReportData.summary.totalPrs} total PRs</span>
+                        <span className="summary-sep">·</span>
+                        <span>{healthReportData.summary.openPrs} open</span>
+                        <span className="summary-sep">·</span>
+                        <span>{healthReportData.summary.mergedPrs} merged</span>
+                        <span className="summary-sep">·</span>
+                        <span>{healthReportData.summary.closedPrs} closed</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Stale PRs Detail Drawer */}
             {showStaleList && metricsData.metrics.stalePrs.staleCount > 0 && (

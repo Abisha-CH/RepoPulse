@@ -177,6 +177,7 @@ Open **[http://localhost:5173](http://localhost:5173)** in your browser.
 | `POST` | `/repos/:id/send-digest` | Yes | Formats the repo's current metrics as a Slack message and posts it to `SLACK_WEBHOOK_URL` |
 | `GET` | `/repos/:id/insights` | Yes | Returns AI insights (cached result if still valid, otherwise generates fresh via Gemini) |
 | `POST` | `/repos/:id/insights/regenerate` | Yes | Forces a fresh Gemini analysis, ignoring any cached insight |
+| `GET` | `/repos/:id/health-report` | Yes | Returns an assembled engineering health report with overall score, 4 sub-category scores, and cached AI insights |
 | `GET` | `/public/leaderboard` | No | Public ranking of all synced repos by health score (repo-level aggregates only) |
 
 ---
@@ -213,6 +214,28 @@ Beneath the metric cards, RepoPulse can render an **AI Insights** panel that rea
 **Enable it:** add a `GEMINI_API_KEY` to `backend/.env` (see the setup table). The encryption is server-side only — the key is never exposed to the frontend. Without a key, the panel shows a friendly "not configured" message and the feature is gracefully disabled.
 
 > **⏰ Schedule plan:** Like Slack digests, insights are currently generated on demand. A future scheduled job would call the same generation function for each synced repo on a cadence and simply serve the fresh cache — see the scheduling notes in `backend/src/insights/generate.ts` and `backend/src/routes/insights.ts`.
+
+---
+
+## 📋 Engineering Health Report
+
+The **Health Report** button on the dashboard generates a polished, shareable summary of a repository's engineering health — reusing all the data already computed by RepoPulse (metrics, health score, AI insights) and presenting it as a cohesive report.
+
+**What it includes:**
+- **Overall Health Score** (0–100), prominently displayed as a circular gauge
+- **4 Sub-Category Scores**, each with a visual progress bar:
+  - **Delivery Velocity** — average time to merge
+  - **Review Process** — review latency combined with stale PR rate
+  - **Knowledge Distribution** — bus factor / contributor concentration
+  - **CI Reliability** — CI check failure rate
+- **Top Risks & Recommendations** — the cached AI Insights observations (no new Gemini calls)
+- **Repository Summary** — total, open, merged, and closed PR counts
+
+**How it works:** The endpoint (`GET /repos/:id/health-report`) fetches existing PR data, computes metrics and the health score using the same functions powering the dashboard and leaderboard, and pulls the most recently cached AI Insights from the database. No new external API calls or database writes are made — the report is assembled entirely from existing data and is fast to generate.
+
+**Export:** The report view includes a **Print / Export PDF** button that uses the browser's native print-to-PDF functionality, with print-optimized CSS that shows only the report content.
+
+![Health Report](screenshots/health-report.png)
 
 ---
 
