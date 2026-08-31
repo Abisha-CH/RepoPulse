@@ -6,12 +6,15 @@ import {
   connectRepo,
   syncRepo,
   fetchRepoMetrics,
+  fetchInsights,
+  regenerateInsights,
   sendDigest,
   logoutUser,
   type MeResponse,
   type ConnectedRepo,
   type GitHubRepoOption,
   type RepoMetricsResponse,
+  type InsightsResponse,
 } from './api';
 
 type AuthState =
@@ -36,6 +39,10 @@ export default function App() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showStaleList, setShowStaleList] = useState(false);
+  const [insightsData, setInsightsData] = useState<InsightsResponse | null>(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
+  const [isRegeneratingInsights, setIsRegeneratingInsights] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
 
   const handleLogout = async () => {
     try {
@@ -109,13 +116,52 @@ export default function App() {
     }
   }, []);
 
+  // Load AI insights (runs after metrics load; silently handles missing GEMINI_API_KEY).
+  const loadInsights = useCallback(async (repoId: string) => {
+    setIsLoadingInsights(true);
+    setInsightsError(null);
+    try {
+      const data = await fetchInsights(repoId);
+      setInsightsData(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 501 = GEMINI_API_KEY not configured — show a friendly note, not a red error.
+      if (msg.includes('501') || msg.includes('not available') || msg.includes('not configured')) {
+        setInsightsError('__NOT_CONFIGURED__');
+      } else {
+        setInsightsError(msg);
+      }
+      setInsightsData(null);
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (selectedRepoId) {
+      setInsightsData(null); // clear old repo's insights immediately
       void loadMetrics(selectedRepoId);
+      void loadInsights(selectedRepoId);
     } else {
       setMetricsData(null);
+      setInsightsData(null);
     }
-  }, [selectedRepoId, loadMetrics]);
+  }, [selectedRepoId, loadMetrics, loadInsights]);
+
+  const handleRegenerateInsights = async () => {
+    if (!selectedRepoId) return;
+    setIsRegeneratingInsights(true);
+    setInsightsError(null);
+    try {
+      const data = await regenerateInsights(selectedRepoId);
+      setInsightsData(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setInsightsError(msg);
+    } finally {
+      setIsRegeneratingInsights(false);
+    }
+  };
 
   const handleConnect = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -451,6 +497,89 @@ export default function App() {
                   {metricsData.metrics.busFactor.description}
                 </div>
               </div>
+            </div>
+
+            {/* ─── AI Insights ─────────────────────────────────────────────────── */}
+            <div className="card insights-card">
+              <div className="insights-header">
+                <div className="insights-title-row">
+                  <span className="insights-icon">🤖</span>
+                  <h3>AI Insights</h3>
+                  {insightsData?.cached && (
+                    <span className="tag tag-cached" title="Served from cache — re-sync or click regenerate to refresh">cached</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary regenerate-btn"
+                  onClick={handleRegenerateInsights}
+                  disabled={isRegeneratingInsights || isLoadingInsights}
+                  title="Generate fresh insights from Gemini"
+                >
+                  {isRegeneratingInsights ? (
+                    <>
+                      <span className="btn-spinner" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ marginRight: 5 }}>🔄</span>
+                      Regenerate
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {isLoadingInsights && (
+                <div className="insights-loading">
+                  <div className="spinner" />
+                  <p>Analyzing repository health with Gemini…</p>
+                </div>
+              )}
+
+              {!isLoadingInsights && insightsError === '__NOT_CONFIGURED__' && (
+                <div className="insights-not-configured">
+                  <p>
+                    AI insights are not enabled. Add <code>GEMINI_API_KEY</code> to <code>backend/.env</code> to activate this feature.
+                  </p>
+                </div>
+              )}
+
+              {!isLoadingInsights && insightsError && insightsError !== '__NOT_CONFIGURED__' && (
+                <div className="insights-error">
+                  <p>⚠️ {insightsError}</p>
+                  <button type="button" className="btn-link" onClick={handleRegenerateInsights}>
+                    Try again
+                  </button>
+                </div>
+              )}
+
+              {!isLoadingInsights && insightsData && (
+                <div className="insights-list">
+                  {insightsData.insight.observations.map((obs, idx) => (
+                    <div key={idx} className={`insight-row severity-${obs.severity}`}>
+                      <div className="insight-head">
+                        <span className={`severity-badge severity-${obs.severity}`}>
+                          {obs.severity}
+                        </span>
+                        <span className="insight-finding">{obs.finding}</span>
+                      </div>
+                      <div className="insight-body">
+                        <div className="insight-field">
+                          <span className="field-label">Evidence:</span> {obs.evidence}
+                        </div>
+                        <div className="insight-field">
+                          <span className="field-label">Recommendation:</span> {obs.recommendation}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="insights-footer">
+                    Generated {new Date(insightsData.generatedAt).toLocaleString()}
+                    {insightsData.cached ? ' (cached)' : ''}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Stale PRs Detail Drawer */}

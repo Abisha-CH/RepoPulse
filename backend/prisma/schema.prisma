@@ -40,6 +40,7 @@ model Repo {
 
   connected_by_user User     @relation(fields: [connected_by_user_id], references: [id], onDelete: Cascade)
   pullRequests      PullRequest[]
+  insights          Insight[]
 
   // A repo is unique per (owner, name) — avoid duplicate connections.
   @@unique([owner, name])
@@ -47,6 +48,22 @@ model Repo {
   @@index([connected_by_user_id])
 
   @@map("repos")
+}
+
+model Insight {
+  id             String   @id @default(cuid())
+  repo_id        String
+  // Snapshot of the repo's PR count at generation time — used to detect whether
+  // the insight is still valid (stale after a new sync changes the PR count).
+  pr_snapshot    Int
+  generated_at   DateTime @default(now())
+  // The full structured JSON result from Gemini (observations array).
+  result         Json
+
+  repo Repo @relation(fields: [repo_id], references: [id], onDelete: Cascade)
+
+  @@index([repo_id, generated_at])
+  @@map("insights")
 }
 
 model PullRequest {

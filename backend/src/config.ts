@@ -37,4 +37,5 @@ export const config = {
   encryptionKey: optional('ENCRYPTION_KEY', ''),
 
   databaseUrl: required('DATABASE_URL'),
+  geminiApiKey: optional('GEMINI_API_KEY', ''),
 } as const;

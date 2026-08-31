@@ -5,6 +5,7 @@ import path from 'node:path';
 import { githubAuthRouter } from './auth/oauth';
 import { meRouter } from './routes/me';
 import { reposRouter } from './routes/repos';
+import { insightsRouter } from './routes/insights';
 import { publicRouter } from './routes/public';
 
 export function createApp(): express.Express {
@@ -21,6 +22,7 @@ export function createApp(): express.Express {
   app.use('/auth/github', githubAuthRouter);
   app.use(meRouter);
   app.use(reposRouter);
+  app.use(insightsRouter);
   // Public, no-auth endpoints (e.g. GET /public/leaderboard).
   app.use(publicRouter);
 
@@ -39,6 +41,7 @@ export function createApp(): express.Express {
         req.path.startsWith('/api') ||
         req.path.startsWith('/public') ||
         req.path.startsWith('/repos') ||
+        req.path.startsWith('/insights') ||
         req.path.startsWith('/user') ||
         req.path.startsWith('/me') ||
         req.path.startsWith('/health')

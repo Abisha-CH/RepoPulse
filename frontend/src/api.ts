@@ -243,6 +243,49 @@ export async function fetchRepoMetrics(repoId: string): Promise<RepoMetricsRespo
   return (await res.json()) as RepoMetricsResponse;
 }
 
+// ── AI Insights ────────────────────────────────────────────────────────────
+
+export interface InsightObservation {
+  finding: string;
+  evidence: string;
+  recommendation: string;
+  severity: 'high' | 'medium' | 'low' | 'positive';
+}
+
+export interface InsightsResult {
+  observations: InsightObservation[];
+}
+
+export interface InsightsResponse {
+  insight: InsightsResult;
+  generatedAt: string;
+  cached: boolean;
+}
+
+/**
+ * Fetch AI insights for a repo (returns cached result when available).
+ */
+export async function fetchInsights(repoId: string): Promise<InsightsResponse> {
+  const res = await fetch(`/repos/${encodeURIComponent(repoId)}/insights`);
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    throw new Error(data.error ?? `Failed to fetch insights (${res.status})`);
+  }
+  return (await res.json()) as InsightsResponse;
+}
+
+/**
+ * Force-regenerate AI insights for a repo, ignoring cache.
+ */
+export async function regenerateInsights(repoId: string): Promise<InsightsResponse> {
+  const res = await fetch(`/repos/${encodeURIComponent(repoId)}/insights/regenerate`, { method: 'POST' });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+    throw new Error(data.error ?? `Failed to regenerate insights (${res.status})`);
+  }
+  return (await res.json()) as InsightsResponse;
+}
+
 // ── Public Leaderboard ─────────────────────────────────────────────────────
 
 export interface LeaderboardComponent {
