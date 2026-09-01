@@ -5,7 +5,7 @@
 
 ---
 
-![RepoPulse Dashboard — Engineering Health Metrics](screenshots/dashboard-metrics.png)
+![RepoPulse Dashboard — Engineering Health Metrics](screenshots/dashboard-metrics.png?v=2)
 
 ## Why RepoPulse?
 
@@ -84,7 +84,7 @@ Browser ── /auth/github/login ──▶ GitHub ──?code=...──▶ /aut
                                                      redirect ──▶ / (Dashboard SPA)
 ```
 
-![GitHub OAuth Login](screenshots/login.png)
+![GitHub OAuth Login](screenshots/login.png?v=2)
 
 This single-origin model eliminates cross-origin cookie issues and makes authentication work seamlessly across `localhost`, ngrok tunnels, and production URLs.
 
